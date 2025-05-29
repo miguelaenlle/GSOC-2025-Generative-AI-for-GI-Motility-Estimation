@@ -1,6 +1,5 @@
 ## ***AN AUTOMATED SEGMENTATION PIPELINE FOR QUANTIFYING GASTRIC MOTILITY IN HUMANS USING 4D CINE MAGNETIC RESONANCE IMAGING***
 
-*Abstract Accepted to DDW '25*
 
 ![banner-1](banner-1.png)
 
@@ -105,4 +104,4 @@ When loading the file to ITK-snap, make sure you select “NIFTI” as the type.
   4. Show cropped 3D/4D antrum
 
 - Automated pipeline version is: `motility-final-calc.m`
-# GI-Analytics
+
