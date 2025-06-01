@@ -7,8 +7,8 @@ import os
 import shutil
 from PIL import Image  # Ensure Pillow is installed
 
-source_dir = r'C:\Users\User\Desktop\singan-seg\Output\RandomSamples'
-dest_dir = r'C:\Users\User\Desktop\singan-seg\Preprocess\RandomSamples_ready'
+source_dir = r'Output/RandomSamples'
+dest_dir = r'Preprocess/RandomSamples_ready'
 os.makedirs(dest_dir, exist_ok=True)
 
 for subdir in os.listdir(source_dir):

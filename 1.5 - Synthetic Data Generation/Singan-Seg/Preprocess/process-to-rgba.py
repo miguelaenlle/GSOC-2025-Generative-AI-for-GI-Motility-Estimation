@@ -2,6 +2,7 @@ import os
 from PIL import Image
 import numpy as np
 import glob
+from tqdm import tqdm
 
 def process_to_rgba(input_dir, output_dir):
     """
@@ -17,7 +18,7 @@ def process_to_rgba(input_dir, output_dir):
     paths = sorted(glob.glob(os.path.join(input_dir, '*.png')))
     
     # Loop over image and mask pairs, assuming each image is followed by its mask
-    for i in range(0, len(paths), 2):
+    for i in tqdm(range(0, len(paths), 2)):
         image_path = paths[i]       # Path to the MRI image
         mask_path = paths[i + 1]    # Path to the corresponding mask
         
@@ -27,7 +28,7 @@ def process_to_rgba(input_dir, output_dir):
         
         # Check dimensions of the image and the mask match
         if image.size != mask.size:
-            raise ValueError(f"Image and mask sizes do not match for {image_path} and {mask_path}.")
+            raise ValueError(f"Image and mask sizes do not match for {image_path} and {mask_path}: {image.size} vs {mask.size}")
         
         # Convert images to numpy arrays
         image_array = np.array(image)
@@ -46,8 +47,18 @@ def process_to_rgba(input_dir, output_dir):
         
         print(f"Saved 4D image to {output_path}")
 
+# Example usage:
 # process_to_rgba('/path/to/real_images_and_masks', '/path/to/real_images_rgba') # real data
 # process_to_rgba('/path/to/synthetic_images_and_masks', '/path/to/synthetic_images_rgba') # synthetic data
 
-process_to_rgba('/Users/elizabethnemeti/Documents/GitHub/singan-seg/Preprocess/data-pre-RGBA', '/Users/elizabethnemeti/Documents/GitHub/singan-seg/Input/data-RGBA') # real data
-process_to_rgba('/path/to/synthetic_images_and_masks', '/path/to/synthetic_images_rgba') # synthetic data
+# Path to the real data, which we'll convert to RGBA format
+process_to_rgba(
+    input_dir = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks',    # The available, real data
+    output_dir = os.path.join('Input', 'data-RGBA')             # Input of the Singan-Seg Model
+)
+
+# Path to the synthetic data, which we'll convert to RGBA format if needed
+process_to_rgba(
+    input_dir = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks',    # The available, real data
+    output_dir = os.path.join('Input', 'data-RGBA')             # Input of the Singan-Seg Model
+)
