@@ -59,6 +59,6 @@ process_to_rgba(
 
 # Path to the synthetic data, which we'll convert to RGBA format if needed
 process_to_rgba(
-    input_dir = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks',    # The available, real data
-    output_dir = os.path.join('Input', 'data-RGBA')             # Input of the Singan-Seg Model
+    input_dir = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks',    # The available synthetic data
+    output_dir = os.path.join('Input', 'data-RGBA')             # Input of the synthetic data processing script
 )

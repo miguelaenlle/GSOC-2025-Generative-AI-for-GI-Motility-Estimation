@@ -9,19 +9,21 @@ import glob
 def synthetic_data_generation(n_samples=50):
     
     # Path to the dataset (change this if necessary)
-    images = glob.glob(r"Input/data-RGBA/*.png")  # Adjust this path as needed
+    # images = glob.glob(r"Input/data-RGBA/*.png")  # Adjust this path as needed
+    images = glob.glob(r"TrainedModels/*")
     if not images:
         print("No images found. Please check the directory and image file paths.")
         return
     
     for img in images:
-        img_name = os.path.basename(img)  # Get the image name
+        img_name = os.path.basename(img) + '.png'  # Get the image name
 
         print(f"Generating synthetic data for: {img_name}")
         
         # Command to train model and generate synthetic data for each image
         # python_command = f"python main_train.py --input_name {img_name} --nc_z 4 --nc_im 4 --gpu_id 0"
-        python_command = f"python main_train.py --input_name {img_name} --nc_z 4 --nc_im 4 --gpu_id 0"
+        # python_command = f"python main_train.py --input_name {img_name} --nc_z 4 --nc_im 4 --gpu_id 0"
+        python_command = f"python random_samples.py --input_name {img_name} --mode random_samples --gen_start_scale 0 --nc_z 4 --nc_im 4 --gpu_id 0"
         
         try:
             print(f"Running command: {python_command}")

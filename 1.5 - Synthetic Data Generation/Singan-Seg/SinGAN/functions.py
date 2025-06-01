@@ -272,10 +272,11 @@ def load_trained_pyramid(opt, mode_='train'):
         opt.mode = mode
     dir = generate_dir2save(opt)
     if(os.path.exists(dir)):
-        Gs = torch.load('%s/Gs.pth' % dir)
-        Zs = torch.load('%s/Zs.pth' % dir)
-        reals = torch.load('%s/reals.pth' % dir)
-        NoiseAmp = torch.load('%s/NoiseAmp.pth' % dir)
+        print('DIR:', dir)
+        Gs = torch.load('%s/Gs.pth' % dir, weights_only = False)
+        Zs = torch.load('%s/Zs.pth' % dir, weights_only = False)
+        reals = torch.load('%s/reals.pth' % dir, weights_only = False)
+        NoiseAmp = torch.load('%s/NoiseAmp.pth' % dir, weights_only = False)
     else:
         print('no appropriate trained model is exist, please train first')
     opt.mode = mode
