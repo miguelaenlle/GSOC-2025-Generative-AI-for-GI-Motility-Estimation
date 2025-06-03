@@ -42,7 +42,7 @@ class MadisonDatasetLabeled(Dataset):
     def __init__(self, segmentation_path, augment=False) -> None:
         self.image_paths = sorted(glob.glob(os.path.join(segmentation_path, '*image*.png')))
         self.mask_paths = sorted(glob.glob(os.path.join(segmentation_path, '*mask*.png')))
-        
+
         assert len(self.image_paths) == len(self.mask_paths), "Number of images and masks do not match."
         
         self.target_size = (256, 256)

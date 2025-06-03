@@ -5,13 +5,20 @@ Renames files to suit rgba converter script requirements.
 
 import os
 import shutil
+import pandas as pd
 from PIL import Image  # Ensure Pillow is installed
 
 source_dir = r'Output/RandomSamples'
 dest_dir = r'Preprocess/RandomSamples_ready'
+
+evaluation_results = pd.read_csv('/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Postprocess/evaluation_results.csv')
+high_quality_images = set(list(evaluation_results[evaluation_results['SSIM'] > 0.5]['Image'].unique()))
+
 os.makedirs(dest_dir, exist_ok=True)
 
 for subdir in os.listdir(source_dir):
+    if subdir + ".png" not in high_quality_images:
+        continue
     subdir_path = os.path.join(source_dir, subdir)
     if os.path.isdir(subdir_path):
         print(f"Processing subdirectory: {subdir_path}")

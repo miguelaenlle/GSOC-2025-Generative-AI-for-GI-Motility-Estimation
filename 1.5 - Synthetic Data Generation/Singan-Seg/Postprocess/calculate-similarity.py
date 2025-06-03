@@ -80,7 +80,8 @@ def evaluate_folder(real_folder, synthetic_rgba_folder):
     """Evaluate all images in the folders and compile results."""
     results = []
     total_missing = 0
-    for filename in os.listdir(real_folder):
+    total_evaluated = 0
+    for filename in tqdm(os.listdir(real_folder)):
         real_path = os.path.join(real_folder, filename)
         if not filename.endswith('.png'):
             continue
@@ -88,21 +89,24 @@ def evaluate_folder(real_folder, synthetic_rgba_folder):
         synthetic_image_paths = glob.glob(os.path.join(synthetic_rgba_folder, filename[:-4] + "_*.png"))
 
         for synth_path in synthetic_image_paths:
+            if all(os.path.exists(p) for p in [real_path, synth_path]):
+                try:
+                    real_image_rgba = np.array(Image.open(real_path))
+                    synth_image_rgba = np.array(Image.open(synth_path))
 
-        synth_path = os.path.join(synthetic_rgba_folder, filename[:-4] + "_0.png")
-        if all(os.path.exists(p) for p in [real_path, synth_path]):
-            real_image_rgba = np.array(Image.open(real_path))
-            synth_image_rgba = np.array(Image.open(synth_path))
-
-            metrics = evaluate_synthetic_quality(real_image_rgba, synth_image_rgba)
-            results.append((filename, *metrics))
-        else:
-            print(f"Missing file for {filename}, skipping.")
-            total_missing += 1
+                    metrics = evaluate_synthetic_quality(real_image_rgba, synth_image_rgba)
+                    results.append((filename, *metrics))
+                    pd.DataFrame(results, columns=["Image", "SSIM", "MSE", "Dice"]).to_csv('/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Postprocess/evaluation_results.csv', index=False)
+                except:
+                    pass
+            else:
+                print(f"Missing file for {filename}, skipping.")
+                total_missing += 1
+            total_evaluated += 1
     df_results = pd.DataFrame(results, columns=["Image", "SSIM", "MSE", "Dice"]).set_index("Image")
     print(df_results.describe())
 
-    print('Total images evaluated:', len(results))
+    print('Total images evaluated:', total_evaluated)
     print('Total missing images:', total_missing)
 
     df_results.to_csv('/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Postprocess/evaluation_results.csv')
