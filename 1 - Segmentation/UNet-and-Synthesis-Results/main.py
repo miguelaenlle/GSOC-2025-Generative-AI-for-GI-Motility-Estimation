@@ -323,7 +323,7 @@ def main():
         elif model == 'singan-seg':
             print("Using Singan-Seg for synthesis.")
             # Randomly select 170 images from the training set as bases for synthesis
-            # synthesize_with_singan()
+            synthesize_with_singan()
             benchmark_unet(
                 train_augmented_singan_folder,
                 gen_model="singan-seg",
