@@ -96,20 +96,18 @@ def evaluate_folder(real_folder, synthetic_rgba_folder):
 
                     metrics = evaluate_synthetic_quality(real_image_rgba, synth_image_rgba)
                     results.append((filename, *metrics))
-                    pd.DataFrame(results, columns=["Image", "SSIM", "MSE", "Dice"]).to_csv('/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Postprocess/evaluation_results.csv', index=False)
+                    pd.DataFrame(results, columns=["Image", "SSIM", "MSE", "Dice"]).to_csv('evaluation_results.csv', index=False)
                 except:
                     pass
             else:
                 print(f"Missing file for {filename}, skipping.")
                 total_missing += 1
             total_evaluated += 1
-    df_results = pd.DataFrame(results, columns=["Image", "SSIM", "MSE", "Dice"]).set_index("Image")
-    print(df_results.describe())
-
+    df_results = pd.DataFrame(results, columns=["Image", "SSIM", "MSE", "Dice"])
     print('Total images evaluated:', total_evaluated)
     print('Total missing images:', total_missing)
 
-    df_results.to_csv('/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Postprocess/evaluation_results.csv')
+    df_results.to_csv('evaluation_results.csv')
 
     return df_results
 

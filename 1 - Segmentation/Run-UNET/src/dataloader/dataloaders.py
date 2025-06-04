@@ -7,6 +7,16 @@ import glob
 import numpy as np
 from typing import Any
 from PIL import Image
+import sys
+
+sys.path.append(os.path.dirname(os.getcwd()))
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), os.pardir)
+    )
+)
+
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -42,6 +52,10 @@ class MadisonDatasetLabeled(Dataset):
     def __init__(self, segmentation_path, augment=False) -> None:
         self.image_paths = sorted(glob.glob(os.path.join(segmentation_path, '*image*.png')))
         self.mask_paths = sorted(glob.glob(os.path.join(segmentation_path, '*mask*.png')))
+        print('Number of images:', len(self.image_paths))
+        print('Number of masks:', len(self.mask_paths))
+        self.fake_image_paths = sorted(glob.glob(os.path.join(segmentation_path, '*fake_image*.png')))
+        print('Number of fake images:', len(self.fake_image_paths))
 
         assert len(self.image_paths) == len(self.mask_paths), "Number of images and masks do not match."
         
@@ -103,11 +117,16 @@ class MadisonDatasetLabeled(Dataset):
         
         return img, mask, self.image_paths[index]
 
+import pandas as pd
+from tqdm import tqdm
+
 if __name__ == '__main__':
     # Example usage for testing the data loader
     segmentation_path = r'E:\\PythonProjects\\gsoc-2024\\data\\images-roberta'
     dataset = MadisonDatasetLabeled(segmentation_path=segmentation_path, augment=False)
     dataloader = DataLoader(dataset=dataset, batch_size=5, shuffle=True)
+
+    ## For each singular image in the dataset, print its shape and path
     data = next(iter(dataloader))
 
     imgs, masks, paths = data

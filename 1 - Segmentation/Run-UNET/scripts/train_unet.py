@@ -5,6 +5,7 @@ from tqdm import tqdm
 import sys
 import cv2
 import csv
+import wandb
 sys.path.append(os.path.dirname(os.getcwd()))
 sys.path.insert(
     0,
@@ -17,13 +18,15 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
-
+from src.models.discriminator import CNNClassifier
 from src.dataloader.dataloaders import MadisonDatasetLabeled
 from src.models.unet import BaseUNet
 from src.utils.viz_utils import visualize_predictions
 from src.utils.args_utils import train_arg_parser
 from src.evaluation.segmentation_metrics import dice_coefficient
 from src.utils.variable_utils import PLOT_DIRECTORY, TRAINING_LOO, VALIDATION_LOO
+
+UNET_PERFORMANCE_STATISTICS_FOLDER = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_performance_statistics'
 
 # Define the plot_metric function
 def plot_metric(x, label, plot_dir, args, metric):
@@ -41,6 +44,7 @@ def plot_metric(x, label, plot_dir, args, metric):
     plt.close()
 
     print(f'{metric.capitalize()} plot saved to {plot_path}')
+    return plot_path    
 
 def parse_path(path):
     filename = os.path.basename(path)  # Get the filename, e.g., 'FD_027_time_1_slice_7_image.png'
@@ -50,9 +54,8 @@ def parse_path(path):
     slice_idx = parts[4]  # e.g., '7'
     return subject, time_point, slice_idx
 
-
-def train_model(model, train_loader, val_loader, optimizer, criterion, device, args):
-    exp_dir = os.path.join(PLOT_DIRECTORY, args.exp_id)
+def train_model(model, train_loader, val_loader, optimizer, criterion, device, args, discriminator_model = None, discriminator_lr = 1e-3):
+    exp_dir = os.path.join(UNET_PERFORMANCE_STATISTICS_FOLDER, args.exp_id)
     os.makedirs(exp_dir, exist_ok=True)
     os.makedirs(os.path.join(exp_dir, 'model'), exist_ok=True)
 
@@ -66,9 +69,17 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
     patience_limit = 10
     best_dice_epoch = -1  # Track the best Dice epoch
 
+    if discriminator_model is not None:
+        discriminator_model.to(device)
+        discriminator_criterion = nn.BCELoss()  
+        discriminator_optimizer = torch.optim.Adam(discriminator_model.parameters(), lr=discriminator_lr)
+
     for epoch in range(args.epoch):
         model.train()
         train_loss = 0.0
+        discrim_running_loss = 0.0
+        discrim_correct = 0
+        discrim_total = 0
         for batch_idx, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.epoch}")):
             images, masks, paths = batch
             images, masks = images.to(device), masks.to(device)
@@ -79,10 +90,35 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
             optimizer.step()
             train_loss += loss.item() * images.size(0)
 
+            # Train the discriminator model
+            # if discriminator_model is not None:
+            # TODO: Acquire labels from the train loader, are the samples real or fake?
+            if discriminator_model is not None:
+                discriminator_model.train()
+
+                discrim_labels = torch.tensor([1 if 'fake' in path else 0 for path in paths], dtype=torch.float32).to(device)
+                discriminator_optimizer.zero_grad()
+                discrim_preds = discriminator_model(images).squeeze(1)
+
+                loss_discrim = discriminator_criterion(discrim_preds, discrim_labels)
+                loss_discrim.backward()
+                discriminator_optimizer.step()
+
+                discrim_running_loss += loss_discrim.item() * images.size(0)
+                preds = (discrim_preds >= 0.5).long()
+                discrim_correct += (preds == discrim_labels.long()).sum().item()
+                discrim_total += discrim_labels.size(0)
+
         train_loss = train_loss / len(train_loader.dataset)
         train_loss_history.append(train_loss)
 
         model.eval()
+
+        if discriminator_model is not None:
+            discrim_epoch_loss = discrim_running_loss / discrim_total
+            discrim_epoch_acc = discrim_correct / discrim_total
+            print(f"Discriminator Loss: {discrim_epoch_loss:.4f}, Discriminator Accuracy: {discrim_epoch_acc:.4f}")
+            
         val_loss = 0.0
         dice_coefficients = []
         current_epoch_predictions = []  # Store predictions for the current epoch
@@ -109,6 +145,7 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
                     dice_score = dice_coefficient(outputs[i], masks[i], threshold=0.1)
                     dice_coefficients.append(dice_score)
 
+
         # Average Dice across all validation samples
         dice_mean = np.mean(dice_coefficients)
         dice_coef_history.append(dice_mean)
@@ -117,6 +154,15 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
 
         print(f"Dice Coefficient for Epoch {epoch}: {dice_mean:.4f}")
         print(f'Epoch {epoch+1}/{args.epoch}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        wandb.log({
+            "epoch": epoch,
+            'gen_model': args.gen_model,
+            'synthetic_real_ratio': args.synthetic_real_ratio,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "dice_coefficient": dice_mean,
+            "predictions": [wandb.Image(pred[0], caption=os.path.basename(pred[1])) for pred in current_epoch_predictions]
+        })
 
         # Save the model and predictions only if Dice coefficient improves
         if dice_mean > best_dice:
@@ -144,6 +190,8 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
         save_path = os.path.join(save_dir, original_filename)
         cv2.imwrite(save_path, predicted_mask)
 
+
+
     print(f"Predictions for the best Dice epoch ({best_dice_epoch + 1}) saved to {save_dir}")
 
     # Save best Dice epoch info to a text file
@@ -151,14 +199,22 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
     with open(best_dice_path, 'w') as f:
         f.write(f"Best Epoch: {best_dice_epoch + 1}\n")
         f.write(f"Dice Coefficient: {best_dice:.4f}\n")
+
     print(f"Best Dice epoch details saved to {best_dice_path}")
 
     # Plot and save Dice coefficient curve
-    plot_metric(x=dice_coef_history,
+    plot_save_path = plot_metric(x=dice_coef_history,
                 label="Dice Coefficient",
                 plot_dir=PLOT_DIRECTORY,
                 args=args,
                 metric='dice_coeff')
+
+    # Save the curve to wandb
+    wandb.log({
+        "dice_coefficient_curve": wandb.Image(plot_save_path),
+        "synthetic_real_ratio": args.synthetic_real_ratio,
+        "gen_model": args.gen_model
+    })
 
     print("Training completed.")
 
@@ -168,10 +224,10 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Initialize the datasets
-    print(f"Loading training data from: {TRAINING_LOO}")
-    train_dataset = MadisonDatasetLabeled(TRAINING_LOO, augment=True)
-    print(f"Loading validation data from: {VALIDATION_LOO}")
-    val_dataset = MadisonDatasetLabeled(VALIDATION_LOO, augment=False)
+    print(f"Loading training data from: {args.train_dir}")
+    train_dataset = MadisonDatasetLabeled(args.train_dir, augment=True)
+    print(f"Loading validation data from: {args.val_dir}")
+    val_dataset = MadisonDatasetLabeled(args.val_dir, augment=False)
 
     print(f"Training dataset size: {len(train_dataset)}")
     print(f"Validation dataset size: {len(val_dataset)}")
@@ -179,9 +235,43 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.bs, shuffle=False)
 
+
+
+
+
+    import pandas as pd
+    from torchvision import io
+    data_shapes = []
+    for i in tqdm(range(len(train_dataset))):
+        img, mask, path = train_dataset[i]
+        if img.shape[0] != 1:
+            print(f"image {path} with shape {img.shape} is NOT single channel")
+        if mask.shape[0] != 1:
+            breakpoint()
+            print(f"mask {path} with shape {mask.shape} is NOT single channel")
+        data_shapes.append((img.shape, mask.shape, path))
+
+    df = pd.DataFrame(data_shapes, columns=['Image Shape', 'Mask Shape', 'Path'])
+    df.to_csv('data_shapes.csv', index=False)
+
+
+
+
+
+
+
     model = BaseUNet(in_channels=1, out_channels=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
     criterion = nn.BCEWithLogitsLoss()
+
+    discriminator_model = CNNClassifier().to(device) if args.gen_model else None
+
+    timestamp = np.datetime64('now', 's').astype(str).replace(':', '-')
+
+    wandb.init(
+        project="gsoc-diffusion-2025",
+        name=f"unet_{args.gen_model}_benchmark_{timestamp}"
+    )
 
     train_model(model=model,
                 train_loader=train_loader,
@@ -189,4 +279,5 @@ if __name__ == "__main__":
                 optimizer=optimizer,
                 criterion=criterion,
                 device=device,
-                args=args)
+                args=args,
+                discriminator_model=discriminator_model)

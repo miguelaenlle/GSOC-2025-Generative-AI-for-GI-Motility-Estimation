@@ -40,6 +40,7 @@ if __name__ == '__main__': # makes sure script only runs the code if executed as
     parser.add_argument('--input_name', help='input image name', required=True) 
     parser.add_argument('--mode', help='task to be done', default='train')
     parser.add_argument('--gpu_id', help='GPU ID to train')
+    parser.add_argument('--num_samples', type=int, help="number of samples to generate random samples", default=25)
     opt = parser.parse_args()
     opt = functions.post_config(opt)
     opt.device = torch.device("cpu" if opt.not_cuda else "cuda:{}".format(opt.gpu_id))
@@ -61,4 +62,4 @@ if __name__ == '__main__': # makes sure script only runs the code if executed as
         train(opt, Gs, Zs, reals, NoiseAmp)
         # Call SinGAN_generate with real image path for naming
         #SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt, real_image_path=opt.input_name)
-        SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt)
+        SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt, num_samples=opt.num_samples)
