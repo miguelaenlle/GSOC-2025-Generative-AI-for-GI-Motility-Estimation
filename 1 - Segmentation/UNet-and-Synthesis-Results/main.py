@@ -21,14 +21,19 @@ import torchvision.transforms.functional as TF
 # full_dataset_folder = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks'
 
 SKIP_SINGAN_TRAINING = True
+SKIP_UNTRAINED_MODELS = True
+SHORT_SINGAN_TRAINING = True
 
 full_dataset_folder = '/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Input/data-RGBA'
 full_dataset_folder_image_and_masks = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks'
 
 train_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/train'
+
+unet_and_synthesis_results_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results'
 train_augmented_singan_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/train_augmented_singan'
 test_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/test'
 singan_similarity_output_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/singan_output_from_similarity'
+
 split_singan_output_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/split_singan_output'
 random_samples_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/Output/RandomSamples'
 
@@ -191,7 +196,10 @@ def move_singan_results_to_preprocessing(
                             print(f"Error processing file {file_path}: {e}")
     
 def synthesize_with_singan(
-    ratio_synthesized_to_real=1
+    output_train_folder,
+    synthetic_output_folder,
+    ratio_synthesized_to_real=1,
+    skip_untrained_models = False
 ):
     train_dataset = os.listdir(train_folder)
     # Specifically picked to ensure that training the SinGANS takes about 24 hours
@@ -208,15 +216,28 @@ def synthesize_with_singan(
         else:
             selected_images = random.sample(train_dataset, num_base_images)
             pd.DataFrame(selected_images).to_csv(os.path.join(train_folder, 'selected_images.csv'), index=False)
-        for img_name in selected_images[::-1]:
-            num_samples_to_generate = (len(train_dataset) * ratio_synthesized_to_real * 2) // num_base_images
+        # Perform set union between the selected images and existing available base image models
+        existing_models = set(np.array(os.listdir(trained_models_folder)) + '.png')
+        selected_images = [str(text) for text in (list(set(selected_images) | existing_models))]
+
+        num_successes = 0
+
+        for img_name in tqdm(selected_images):
+            if SHORT_SINGAN_TRAINING and num_successes >= 5:
+                print("Short Singan training mode enabled, stopping after 5 successful syntheses.")
+                break
+            num_samples_to_generate = int((len(train_dataset) * ratio_synthesized_to_real * 4) // num_base_images)
             if os.path.exists(os.path.join(trained_models_folder, img_name[:-4])):
-                python_command = f"python '{random_samples_py}' --input_name {img_name} --input_dir='{train_folder}' --mode random_samples --gen_start_scale 0 --nc_z 4 --nc_im 4 --gpu_id 0 --num_samples {num_samples_to_generate}"
+                python_command = f"python '{random_samples_py}' --input_name {img_name} --input_dir='{train_folder}' --mode random_samples --gen_start_scale 0 --nc_z 4 --nc_im 4 --gpu_id 0 --num_samples {num_samples_to_generate} --out '{synthetic_output_folder}'"
+            elif skip_untrained_models == False:
+                python_command = f"python '{main_train_py}' --input_name {img_name}  --input_dir='{train_folder}' --nc_z 4 --nc_im 4 --gpu_id 0 --num_samples {num_samples_to_generate} --out '{synthetic_output_folder}'"
             else:
-                python_command = f"python '{main_train_py}' --input_name {img_name}  --input_dir='{train_folder}' --nc_z 4 --nc_im 4 --gpu_id 0 --num_samples {num_samples_to_generate}"
+                print(f"Skipping {img_name} as it is not trained yet.")
+                continue
             try:
                 print(f"Running command: {python_command}")
                 result = subprocess.run(python_command, shell=True, check=True)
+                num_successes += 1
                 print(f"Command completed successfully for {img_name}\n")
             except subprocess.CalledProcessError as e:
                 print(f"An error occurred while processing {img_name}: {e}")
@@ -226,17 +247,28 @@ def synthesize_with_singan(
 
     # Move them into synthetic and masks folders
     real_folder = train_folder
-    output_folder = singan_similarity_output_folder
 
+    output_folder = singan_similarity_output_folder
     synthetic_folder = os.path.join(split_singan_output_folder, 'synthetic_images')
     masks_folder = os.path.join(split_singan_output_folder, 'masks')
 
+    # Clear the output, synthetic, and masks folders if they exist
+    # It is safe to remove these because their data is outputted to the RandomSamples folder
+    # These are basically temporary folders
+    if os.path.exists(output_folder):
+        shutil.rmtree(output_folder)
+    if os.path.exists(synthetic_folder):
+        shutil.rmtree(synthetic_folder)
+    if os.path.exists(masks_folder):
+        shutil.rmtree(masks_folder)
+
     os.makedirs(synthetic_folder, exist_ok=True)
     os.makedirs(masks_folder, exist_ok=True)
+    os.makedirs(output_train_folder, exist_ok=True)
 
     # Clone synthetic images and masks into their respective folders
-    image_files = glob.glob(os.path.join(random_samples_folder, '**', '*_img.png'), recursive=True)
-    mask_files = glob.glob(os.path.join(random_samples_folder, '**', '*_mask.png'), recursive=True)
+    image_files = glob.glob(os.path.join(synthetic_output_folder, '**', '*_img.png'), recursive=True)
+    mask_files = glob.glob(os.path.join(synthetic_output_folder, '**', '*_mask.png'), recursive=True)
     for img_file in image_files:
         case_name = img_file.split('/')[-3]
         img_name = img_file.split('/')[-1][:-8]  # Remove '_img.png' suffix
@@ -252,41 +284,68 @@ def synthesize_with_singan(
     # Generate similarity scores; filter by usability
     process_folders(real_folder, synthetic_folder, masks_folder, output_folder)
     
-    # evaluation_results = evaluate_folder(real_folder, output_folder)
-    evaluation_results = pd.read_csv('evaluation_results.csv')
+    evaluation_results = evaluate_folder(real_folder, output_folder)
+    # evaluation_results = pd.read_csv('evaluation_results.csv')
     high_quality_images = set(list(evaluation_results[evaluation_results['SSIM'] > 0.5]['Image'].unique()))
+    print(f"High quality synthetic images: {len(high_quality_images)}")
 
     # Move them into the ready folder -> Transfer into singan augmented dataset folder
-    move_singan_results_to_preprocessing(random_samples_folder, train_augmented_singan_folder, high_quality_images)
+    move_singan_results_to_preprocessing(synthetic_output_folder, output_train_folder, high_quality_images)
 
     # Transfer the training images and masks into the augmented training folder
     for file in os.listdir(unet_training_folder):
         if file.endswith('_image.png') or file.endswith('_stomach_mask.png'):
-            shutil.copy(os.path.join(unet_training_folder, file), os.path.join(train_augmented_singan_folder, file))
+            shutil.copy(os.path.join(unet_training_folder, file), os.path.join(output_train_folder, file))
 
     # Transfer the synthetic images and masks into the augmented training folder
     masks_folder_set = set(os.listdir(masks_folder))
     num_synthetic_images_added = 0
+
     for file in os.listdir(synthetic_folder):
         if file in masks_folder_set:
-            matching_file = file[:-4][:-2] + '.png'
+            last_underscore_index = file.rfind('_')
+            if last_underscore_index == -1:
+                last_underscore_index = len(file)
+            file_no_end_number = file[:last_underscore_index]
+            matching_file = file_no_end_number + '.png'
             if matching_file in high_quality_images:
                 new_filename = file[:-4] + '_fake_image.png'
                 img_path = os.path.join(synthetic_folder, file)
                 img = io.read_image(img_path)[:3]
                 gray = TF.rgb_to_grayscale(img, num_output_channels=1)
 
-                dest = os.path.join(train_augmented_singan_folder, new_filename)
+                dest = os.path.join(output_train_folder, new_filename)
                 io.write_png(gray, dest)
 
                 # Transfer the mask
                 mask_path = os.path.join(masks_folder, file)
+                mask_img = io.read_image(mask_path)[:3]
+                gray =  TF.rgb_to_grayscale(mask_img, num_output_channels=1)
+
                 new_mask_filename = file[:-4] + '_fake_stomach_mask.png'
-                mask_dest = os.path.join(train_augmented_singan_folder, new_mask_filename)
-                shutil.copy(mask_path, mask_dest)
+                mask_dest = os.path.join(output_train_folder, new_mask_filename)
+                
+                io.write_png(gray, mask_dest)
+
                 num_synthetic_images_added += 1
 
     print(f"Added {num_synthetic_images_added} synthetic images to the augmented training folder.")
+    save_synthetic_images_count('singan-seg', ratio_synthesized_to_real, num_synthetic_images_added)
+
+# Save the number of synthetic images added for the given generative model and ratio in a pandas DF
+def save_synthetic_images_count(gen_model, synthetic_real_ratio, count):
+    """Saves the count of synthetic images added to a CSV file."""
+    df = pd.DataFrame({
+        'Generative Model': [gen_model],
+        'Synthetic to Real Ratio': [synthetic_real_ratio],
+        'Count of Synthetic Images Added': [count]
+    })
+    output_file = os.path.join(unet_and_synthesis_results_folder, 'synthetic_images_count.csv')
+    
+    if os.path.exists(output_file):
+        df.to_csv(output_file, mode='a', header=False, index=False)
+    else:
+        df.to_csv(output_file, index=False)
 
 
 def benchmark_unet(
@@ -316,6 +375,9 @@ def main():
         'ddim',
         'vae'
     ]
+
+    exp_timestamp = np.datetime64('now', 's').astype(str).replace(':', '-')
+
     for model in generative_models:
         if model == 'none':
             print("No generative model selected, skipping synthesis.")
@@ -323,12 +385,21 @@ def main():
         elif model == 'singan-seg':
             print("Using Singan-Seg for synthesis.")
             # Randomly select 170 images from the training set as bases for synthesis
-            synthesize_with_singan()
-            benchmark_unet(
-                train_augmented_singan_folder,
-                gen_model="singan-seg",
-                synthetic_real_ratio=1.0  # Ratio of synthetic to real data in training    
-            )
+            for synthetic_real_ratio in [0.5, 1.0, 5.0, 9.0][::-1]:
+                folder_name = f"{unet_and_synthesis_results_folder}/train_augmented_singan_synthetic_real_ratio_{synthetic_real_ratio}".replace('.', '_')
+                synthetic_output_folder = f"{random_samples_folder}_synthetic_real_ratio_{synthetic_real_ratio}".replace('.', '_')
+                os.makedirs(train_augmented_singan_folder, exist_ok=True)
+                synthesize_with_singan(
+                    output_train_folder=folder_name,
+                    synthetic_output_folder=synthetic_output_folder,
+                    ratio_synthesized_to_real=synthetic_real_ratio,
+                    skip_untrained_models=SKIP_UNTRAINED_MODELS 
+                )
+                benchmark_unet(
+                    folder_name,
+                    gen_model="singan-seg",
+                    synthetic_real_ratio=synthetic_real_ratio  # Ratio of synthetic to real data in training    
+                )
         elif model == 'ddim':
             print("DDIM synthesis is not supported yet.")
         elif model == 'vae':

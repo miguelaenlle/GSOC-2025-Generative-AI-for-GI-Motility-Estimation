@@ -6,6 +6,7 @@ import sys
 import cv2
 import csv
 import wandb
+import json
 import pandas as pd
 sys.path.append(os.path.dirname(os.getcwd()))
 sys.path.insert(
@@ -74,7 +75,6 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
         discriminator_model.to(device)
         discriminator_criterion = nn.BCELoss()  
         discriminator_optimizer = torch.optim.Adam(discriminator_model.parameters(), lr=discriminator_lr)
-
     for epoch in range(args.epoch):
         model.train()
         train_loss = 0.0
@@ -113,16 +113,20 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
                 discriminator_optimizer.step()
 
                 discrim_running_loss += loss_discrim.item() * images.size(0)
+
+                # 1 if fake (AI-generated)
+                # 0 if real
                 preds = (discrim_preds >= 0.5).long()
+                
                 discrim_correct += (preds == discrim_labels.long()).sum().item()
                 discrim_total += discrim_labels.size(0)
 
                 # Count correct predictions for fake and real samples
-                discrim_correct_fake += ((preds == 0) & (discrim_labels == 0)).sum().item()
-                discrim_total_fake += (discrim_labels == 0).sum().item()
+                discrim_correct_fake += ((preds == 1) & (discrim_labels == 1)).sum().item()
+                discrim_total_fake += (discrim_labels == 1).sum().item()
 
-                discrim_correct_real += ((preds == 1) & (discrim_labels == 1)).sum().item()
-                discrim_total_real += (discrim_labels == 1).sum().item()
+                discrim_correct_real += ((preds == 0) & (discrim_labels == 0)).sum().item()
+                discrim_total_real += (discrim_labels == 0).sum().item()
 
         train_loss = train_loss / len(train_loader.dataset)
         train_loss_history.append(train_loss)
@@ -156,31 +160,9 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
                     dice_score = dice_coefficient(outputs[i], masks[i], threshold=0.1)
                     dice_coefficients.append(dice_score)
 
-                # if discriminator_model is not None:
-                #     discrim_labels = torch.tensor([1 if 'fake' in path else 0 for path in paths], dtype=torch.float32).to(device)
-                #     discrim_preds = discriminator_model(images).squeeze(1)
-
-                #     loss_discrim = discriminator_criterion(discrim_preds, discrim_labels)
-                #     discrim_val_running_loss += loss_discrim.item() * images.size(0)
-
-                #     preds = (discrim_preds >= 0.5).long()
-                #     discrim_val_correct += (preds == discrim_labels.long()).sum().item()
-                #     discrim_val_total += discrim_labels.size(0)
-                #     # Count correct predictions for fake and real samples
-                #     discrim_val_correct_fake += ((preds == 0) & (discrim_labels == 0)).sum().item()
-                #     discrim_val_total_fake += (discrim_labels == 0).sum().item()
-                #     discrim_val_correct_real += ((preds == 1) & (discrim_labels == 1)).sum().item()
-                #     discrim_val_total_real += (discrim_labels == 1).sum().item()
-
         # Export discriminator statistics to CSV
         if discriminator_model is not None:
             # TODO: Remove validation code. not needed; there is no synthetic data in validation set
-            # discrim_val_epoch_loss = discrim_val_running_loss / discrim_val_total
-            # discrim_val_epoch_acc = discrim_val_correct / discrim_val_total
-            # print(f"Discriminator Validation Loss: {discrim_val_epoch_loss:.4f}, Discriminator Validation Accuracy: {discrim_val_epoch_acc:.4f}")
-            # print(f"Discriminator Fake Validation Accuracy: {discrim_val_correct_fake / discrim_val_total_fake:.4f} ({discrim_val_correct_fake}/{discrim_val_total_fake})")
-            # print(f"Discriminator Real Validation Accuracy: {discrim_val_correct_real / discrim_val_total_real:.4f} ({discrim_val_correct_real}/{discrim_val_total_real})")
-            
             discriminator_statistics = os.path.join(exp_dir, 'discriminator_statistics.csv')
 
             # Add all new statistics to the CSV file using pandas
@@ -256,13 +238,17 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
     with open(best_dice_path, 'w') as f:
         f.write(f"Best Epoch: {best_dice_epoch + 1}\n")
         f.write(f"Dice Coefficient: {best_dice:.4f}\n")
+        f.write(f"Best Train Loss: {min(train_loss_history):.4f}\n")
+        f.write(f"Best Val Loss: {min(val_loss_history):.4f}\n")
+        f.write(f"Train Loss History: {json.dumps(train_loss_history)}\n")
+        f.write(f"Val Loss History: {json.dumps(val_loss_history)}\n")
 
     print(f"Best Dice epoch details saved to {best_dice_path}")
 
     # Plot and save Dice coefficient curve
     plot_save_path = plot_metric(x=dice_coef_history,
                 label="Dice Coefficient",
-                plot_dir=PLOT_DIRECTORY,
+                plot_dir=exp_dir,
                 args=args,
                 metric='dice_coeff')
 
