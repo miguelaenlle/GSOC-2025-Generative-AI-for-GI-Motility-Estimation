@@ -6,6 +6,7 @@ import sys
 import cv2
 import csv
 import wandb
+import pandas as pd
 sys.path.append(os.path.dirname(os.getcwd()))
 sys.path.insert(
     0,
@@ -77,9 +78,16 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
     for epoch in range(args.epoch):
         model.train()
         train_loss = 0.0
+
         discrim_running_loss = 0.0
         discrim_correct = 0
         discrim_total = 0
+
+        discrim_correct_fake = 0
+        discrim_total_fake = 0
+        discrim_correct_real = 0
+        discrim_total_real = 0
+
         for batch_idx, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.epoch}")):
             images, masks, paths = batch
             images, masks = images.to(device), masks.to(device)
@@ -109,19 +117,22 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
                 discrim_correct += (preds == discrim_labels.long()).sum().item()
                 discrim_total += discrim_labels.size(0)
 
+                # Count correct predictions for fake and real samples
+                discrim_correct_fake += ((preds == 0) & (discrim_labels == 0)).sum().item()
+                discrim_total_fake += (discrim_labels == 0).sum().item()
+
+                discrim_correct_real += ((preds == 1) & (discrim_labels == 1)).sum().item()
+                discrim_total_real += (discrim_labels == 1).sum().item()
+
         train_loss = train_loss / len(train_loader.dataset)
         train_loss_history.append(train_loss)
 
         model.eval()
 
-        if discriminator_model is not None:
-            discrim_epoch_loss = discrim_running_loss / discrim_total
-            discrim_epoch_acc = discrim_correct / discrim_total
-            print(f"Discriminator Loss: {discrim_epoch_loss:.4f}, Discriminator Accuracy: {discrim_epoch_acc:.4f}")
-            
         val_loss = 0.0
         dice_coefficients = []
         current_epoch_predictions = []  # Store predictions for the current epoch
+
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_loader):
                 images, masks, paths = batch
@@ -145,6 +156,52 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, device, a
                     dice_score = dice_coefficient(outputs[i], masks[i], threshold=0.1)
                     dice_coefficients.append(dice_score)
 
+                # if discriminator_model is not None:
+                #     discrim_labels = torch.tensor([1 if 'fake' in path else 0 for path in paths], dtype=torch.float32).to(device)
+                #     discrim_preds = discriminator_model(images).squeeze(1)
+
+                #     loss_discrim = discriminator_criterion(discrim_preds, discrim_labels)
+                #     discrim_val_running_loss += loss_discrim.item() * images.size(0)
+
+                #     preds = (discrim_preds >= 0.5).long()
+                #     discrim_val_correct += (preds == discrim_labels.long()).sum().item()
+                #     discrim_val_total += discrim_labels.size(0)
+                #     # Count correct predictions for fake and real samples
+                #     discrim_val_correct_fake += ((preds == 0) & (discrim_labels == 0)).sum().item()
+                #     discrim_val_total_fake += (discrim_labels == 0).sum().item()
+                #     discrim_val_correct_real += ((preds == 1) & (discrim_labels == 1)).sum().item()
+                #     discrim_val_total_real += (discrim_labels == 1).sum().item()
+
+        # Export discriminator statistics to CSV
+        if discriminator_model is not None:
+            # TODO: Remove validation code. not needed; there is no synthetic data in validation set
+            # discrim_val_epoch_loss = discrim_val_running_loss / discrim_val_total
+            # discrim_val_epoch_acc = discrim_val_correct / discrim_val_total
+            # print(f"Discriminator Validation Loss: {discrim_val_epoch_loss:.4f}, Discriminator Validation Accuracy: {discrim_val_epoch_acc:.4f}")
+            # print(f"Discriminator Fake Validation Accuracy: {discrim_val_correct_fake / discrim_val_total_fake:.4f} ({discrim_val_correct_fake}/{discrim_val_total_fake})")
+            # print(f"Discriminator Real Validation Accuracy: {discrim_val_correct_real / discrim_val_total_real:.4f} ({discrim_val_correct_real}/{discrim_val_total_real})")
+            
+            discriminator_statistics = os.path.join(exp_dir, 'discriminator_statistics.csv')
+
+            # Add all new statistics to the CSV file using pandas
+            new_data = {
+                'epoch': epoch,
+
+                'discriminator_train_loss': discrim_running_loss / discrim_total if discrim_total > 0 else 0,
+                'discriminator_train_accuracy': discrim_correct / discrim_total if discrim_total > 0 else 0,
+                'discriminator_train_fake_accuracy': discrim_correct_fake / discrim_total_fake if discrim_total_fake > 0 else 0,
+                'discriminator_train_real_accuracy': discrim_correct_real / discrim_total_real if discrim_total_real > 0 else 0,
+                'discriminator_train_samples': discrim_total,
+            }
+
+            if not os.path.exists(discriminator_statistics):
+                new_data = pd.DataFrame([new_data])
+            else:
+                # Load existing data, append new data, and save
+                existing_data = pd.read_csv(discriminator_statistics)
+                new_data = pd.DataFrame([new_data])
+                new_data = pd.concat([existing_data, new_data], ignore_index=True)
+            new_data.to_csv(discriminator_statistics, index=False)
 
         # Average Dice across all validation samples
         dice_mean = np.mean(dice_coefficients)
@@ -235,30 +292,20 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.bs, shuffle=False)
 
+    # import pandas as pd
+    # from torchvision import io
+    # data_shapes = []
+    # for i in tqdm(range(len(train_dataset))):
+    #     img, mask, path = train_dataset[i]
+    #     if img.shape[0] != 1:
+    #         print(f"image {path} with shape {img.shape} is NOT single channel")
+    #     if mask.shape[0] != 1:
+    #         breakpoint()
+    #         print(f"mask {path} with shape {mask.shape} is NOT single channel")
+    #     data_shapes.append((img.shape, mask.shape, path))
 
-
-
-
-    import pandas as pd
-    from torchvision import io
-    data_shapes = []
-    for i in tqdm(range(len(train_dataset))):
-        img, mask, path = train_dataset[i]
-        if img.shape[0] != 1:
-            print(f"image {path} with shape {img.shape} is NOT single channel")
-        if mask.shape[0] != 1:
-            breakpoint()
-            print(f"mask {path} with shape {mask.shape} is NOT single channel")
-        data_shapes.append((img.shape, mask.shape, path))
-
-    df = pd.DataFrame(data_shapes, columns=['Image Shape', 'Mask Shape', 'Path'])
-    df.to_csv('data_shapes.csv', index=False)
-
-
-
-
-
-
+    # df = pd.DataFrame(data_shapes, columns=['Image Shape', 'Mask Shape', 'Path'])
+    # df.to_csv('data_shapes.csv', index=False)
 
     model = BaseUNet(in_channels=1, out_channels=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
