@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import pandas as pd
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
@@ -54,6 +55,12 @@ def train_discriminator(model, train_loader, val_loader, device, num_epochs=10, 
         correct = 0
         total = 0
 
+        correct_real = 0
+        correct_fake = 0
+
+        total_real = 0
+        total_fake = 0
+
         for inputs, labels in train_loader:
             inputs = inputs.to(device)         # shape: [batch, 1, 266, 266]
             labels = labels.to(device).float() # shape: [batch], values 0 or 1
@@ -68,33 +75,50 @@ def train_discriminator(model, train_loader, val_loader, device, num_epochs=10, 
             preds = (outputs >= 0.5).long()
             correct += (preds == labels.long()).sum().item()
             total += labels.size(0)
+            
+            correct_real += (preds[labels == 0] == 0).sum().item()
+            total_real += (labels == 0).sum().item()
+
+            correct_fake += (preds[labels == 1] == 1).sum().item()
+            total_fake += (labels == 1).sum().item()
 
         epoch_loss = running_loss / total
         epoch_acc = correct / total
 
+        training_results.append({
+            'epoch': epoch,
+            'train_loss': epoch_loss,
+            'train_acc': epoch_acc,
+            'correct_real': correct_real,
+            'total_real': total_real,
+            'correct_fake': correct_fake,
+            'total_fake': total_fake
+        })
+
         # Validation
-        model.eval()
-        val_loss = 0.0
-        val_correct = 0
-        val_total = 0
-        with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs = inputs.to(device)
-                labels = labels.to(device).float()
-                outputs = model(inputs).squeeze(1)
-                loss = criterion(outputs, labels)
+        if val_loader is not None:
+            model.eval()
+            val_loss = 0.0
+            val_correct = 0
+            val_total = 0
+            with torch.no_grad():
+                for inputs, labels in val_loader:
+                    inputs = inputs.to(device)
+                    labels = labels.to(device).float()
+                    outputs = model(inputs).squeeze(1)
+                    loss = criterion(outputs, labels)
 
-                val_loss += loss.item() * inputs.size(0)
-                preds = (outputs >= 0.5).long()
-                val_correct += (preds == labels.long()).sum().item()
-                val_total += labels.size(0)
+                    val_loss += loss.item() * inputs.size(0)
+                    preds = (outputs >= 0.5).long()
+                    val_correct += (preds == labels.long()).sum().item()
+                    val_total += labels.size(0)
 
-        val_loss /= val_total
-        val_acc = val_correct / val_total
+            val_loss /= val_total
+            val_acc = val_correct / val_total
 
-        print(f"Epoch [{epoch+1}/{num_epochs}]  "
-              f"Train Loss: {epoch_loss:.4f}  Train Acc: {epoch_acc:.4f}  "
-              f"Val Loss: {val_loss:.4f}  Val Acc: {val_acc:.4f}")
+            print(f"Epoch [{epoch+1}/{num_epochs}]  "
+                f"Train Loss: {epoch_loss:.4f}  Train Acc: {epoch_acc:.4f}  "
+                f"Val Loss: {val_loss:.4f}  Val Acc: {val_acc:.4f}")
     return pd.DataFrame(training_results)
 
     
@@ -121,4 +145,4 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = CNNClassifier()
-    train_discriminator(model, train_loader, val_loader, device, num_epochs=5, lr=1e-3)
+    train(model, train_loader, val_loader, device, num_epochs=5, lr=1e-3)

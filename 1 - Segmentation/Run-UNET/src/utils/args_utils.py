@@ -23,7 +23,7 @@ def train_arg_parser():
     parser.add_argument('--seed',type=int, default=42)
     parser.add_argument('--lr', type=float, default='1e-4') #1e-4 is best
     parser.add_argument('--bs', type=int, default=16) # change if there's memory issues
-    parser.add_argument('--epoch', type=int, default=1) # default 30
+    parser.add_argument('--epoch', type=int, default=30) # default 30
     parser.add_argument('--train_dir', type=str, default=TRAINING_LOO)
     parser.add_argument('--val_dir', type=str, default=VALIDATION_LOO)
     parser.add_argument('--gen_model', type=str, default='') # path to the generator model

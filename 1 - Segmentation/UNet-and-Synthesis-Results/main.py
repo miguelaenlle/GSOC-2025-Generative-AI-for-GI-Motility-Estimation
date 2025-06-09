@@ -20,9 +20,9 @@ import torchvision.transforms.functional as TF
 
 # full_dataset_folder = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks'
 
-SKIP_SINGAN_TRAINING = True
-SKIP_UNTRAINED_MODELS = True
-SHORT_SINGAN_TRAINING = True
+SKIP_SINGAN_TRAINING = False
+SKIP_UNTRAINED_MODELS = False
+SHORT_SINGAN_TRAINING = False
 
 full_dataset_folder = '/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Input/data-RGBA'
 full_dataset_folder_image_and_masks = '/home/miguel/GI/0 - Data Exploration & Analysis/UW-Madison/stomach_data_and_masks_preparation/stomach_data_and_masks'
@@ -216,6 +216,7 @@ def synthesize_with_singan(
         else:
             selected_images = random.sample(train_dataset, num_base_images)
             pd.DataFrame(selected_images).to_csv(os.path.join(train_folder, 'selected_images.csv'), index=False)
+            
         # Perform set union between the selected images and existing available base image models
         existing_models = set(np.array(os.listdir(trained_models_folder)) + '.png')
         selected_images = [str(text) for text in (list(set(selected_images) | existing_models))]
@@ -285,9 +286,20 @@ def synthesize_with_singan(
     process_folders(real_folder, synthetic_folder, masks_folder, output_folder)
     
     evaluation_results = evaluate_folder(real_folder, output_folder)
+
+
+
+
+
+
     # evaluation_results = pd.read_csv('evaluation_results.csv')
     high_quality_images = set(list(evaluation_results[evaluation_results['SSIM'] > 0.5]['Image'].unique()))
     print(f"High quality synthetic images: {len(high_quality_images)}")
+
+
+
+
+    
 
     # Move them into the ready folder -> Transfer into singan augmented dataset folder
     move_singan_results_to_preprocessing(synthetic_output_folder, output_train_folder, high_quality_images)

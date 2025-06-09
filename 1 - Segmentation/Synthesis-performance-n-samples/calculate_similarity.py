@@ -128,6 +128,3 @@ def evaluate_folder(real_folder, synthetic_rgba_folder):
 #     # process_folders(real_folder, synthetic_folder, masks_folder, output_folder)
 
 #     evaluate_folder(real_folder, output_folder)
-
-# /home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Input/data-RGBA/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Input/data-RGBA/case58_day0_slice_0069.png
-# /home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Input/data-RGBA/case58_day0_slice_0069.png
