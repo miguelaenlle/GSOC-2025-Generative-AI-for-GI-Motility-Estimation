@@ -5,7 +5,7 @@ import cv2
 import re
 
 # Define the directory containing the .mat files
-data_dir = '/Users/elizabethnemeti/Desktop/roberta_3d_data'
+data_dir = '/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/4D_MRI_GI_Roberta/4D_MRI_GI_Roberta/Different ways to view the data/View-3D-at-time-X'
 
 # Define the output directory for the .png files
 output_dir = os.path.join(data_dir, 'converted_png_files')

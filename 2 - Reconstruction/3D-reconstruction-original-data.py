@@ -1,4 +1,4 @@
-Author: Elizabeth N.
+# Author: Elizabeth N.
 
 import os
 import numpy as np
@@ -7,8 +7,8 @@ from PIL import Image
 from tqdm import tqdm
 
 # Path to the folder containing the 2D slices
-input_folder = '/Users/2D-roberta-data'
-output_folder = '/Users/Reconstructed-3D-original'
+input_folder = '/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/all-cine-mri-pngs-corrected'
+output_folder = 'Reconstructed-3D-original'
 os.makedirs(output_folder, exist_ok=True)
 
 # Function to parse the file name and extract subject, time, and slice info
@@ -18,7 +18,7 @@ def parse_filename(filename):
     try:
         subject = f"{parts[0]}_{parts[1]}"  # Combine 'FD' and '031'
         time_point = int(parts[3])  # '86' is in parts[3]
-        slice_idx = int(parts[5])  # '61' is in parts[5]
+        slice_idx = int(parts[5])
     except (IndexError, ValueError) as e:
         raise ValueError(f"Error parsing time or slice index in file: {filename}") from e
 
@@ -30,7 +30,6 @@ data_dict = {}
 
 # Organize files by subject and time point
 for file in files:
-
     subject, time_point, slice_idx = parse_filename(file)
     if subject not in data_dict:
         data_dict[subject] = {}
@@ -51,10 +50,16 @@ for subject, time_data in tqdm(data_dict.items(), desc="Reconstructing subjects"
         slice_shape = None
         volume = []
 
+        # Retrieve the slices, in order
+        # If a slice is missing, fill it with zeros
+
         for slice_idx in range(1, max_slice_idx + 1):
             if slice_idx in slices:
                 slice_path = os.path.join(input_folder, slices[slice_idx])
-                slice_image = np.array(Image.open(slice_path))  # Load PNG as numpy array
+                try:
+                    slice_image = np.array(Image.open(slice_path))  # Load PNG as numpy array
+                except Exception as e:
+                    continue
 
                 if slice_shape is None:
                     slice_shape = slice_image.shape
@@ -79,5 +84,5 @@ for subject, time_data in tqdm(data_dict.items(), desc="Reconstructing subjects"
         nii.header.set_zooms(spacing)  # Set voxel spacing
         nib.save(nii, output_path)
         
-        print(f"Reconstructed volume shape: {volume.shape}")
-        print(f"Intensity range: {volume.min()} to {volume.max()}")
+        # print(f"Reconstructed volume shape: {volume.shape}")
+        # print(f"Intensity range: {volume.min()} to {volume.max()}")

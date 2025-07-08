@@ -47,9 +47,6 @@ trained_models_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Res
 unet_training_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_training'
 unet_validation_folder = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_validation'
 
-
-
-
 train_test_split_ratio = 0.8  # 80% for training, 20% for testing
 
 def process_to_rgba(input_dir, output_dir):
@@ -375,6 +372,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--unet_architecture', type=str, default='')
+    parser.add_argument('--epochs', type=int, default=30)
+
     # '' for base UNet
     # 'uwm-unet' for high accuracy Unet sourced from Kaggle
 
@@ -382,6 +381,7 @@ def main():
     
     device = args.device
     unet_architecture = args.unet_architecture
+    n_epochs = args.epochs
 
     clear_output_folders()
     
@@ -389,10 +389,10 @@ def main():
     synthesis_multiplier = 2
 
     sample_sizes = [
-        200
         # 10, 20, 30, 40, 50, 
         # 60, 70, 80, 90, 100,
         # 150, 200
+        100000
     ] # In reference to the number of subjects to use
 
     evaluation_results_original = pd.read_csv('evaluation_results_original.csv')
@@ -490,13 +490,13 @@ def main():
                 validation_folder='validation',
                 gen_model = "none",
                 synthetic_real_ratio = 0,
-                num_epochs = 400,
+                num_epochs = n_epochs,
                 device=device,
                 unet_architecture=unet_architecture
             )
 
             print(f"Original training stats exported to: {stats_export_location}")
-            results_path = f'/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_performance_statistics/{stats_export_location}/best_dice_epoch.txt'
+            results_path = f'/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_performance_statistics/{stats_export_location}/fold_1/best_dice_epoch.txt'
 
             stat_row = {
                 'num_subjects': len(cases),
@@ -565,14 +565,14 @@ def main():
             validation_folder='validation',
             gen_model = "singan-seg",
             synthetic_real_ratio = 1,
-            num_epochs = 30,
+            num_epochs = n_epochs,
 
             device=device,
             unet_architecture=unet_architecture
         )
 
         print(f"Augmented training stats exported to: {stats_export_location}")
-        results_path = f'/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_performance_statistics/{stats_export_location}/best_dice_epoch.txt'
+        results_path = f'/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_performance_statistics/{stats_export_location}/fold_1/best_dice_epoch.txt'
 
         all_files = os.listdir(training_folder)
         num_fake = len([file for file in all_files if 'fake' in file])

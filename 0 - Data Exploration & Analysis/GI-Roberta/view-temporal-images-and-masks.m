@@ -1,4 +1,4 @@
-dataPath = '/Users/elizabethnemeti/Desktop/GI-Motility Project/GI-Motility-Data/4D-roberta-data';
+dataPath = '/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/4D-roberta-data-2';
 
 % Pick subject files
 imageFile = 'FD_027_image.mat';

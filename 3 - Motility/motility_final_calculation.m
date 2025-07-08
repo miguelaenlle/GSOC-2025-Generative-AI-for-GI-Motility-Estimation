@@ -1,9 +1,9 @@
 % Path to your file
-niftiFile = '/Users/elizabethnemeti/Desktop/Subject_reconstruction_comparisons/FD_027_4D_reconstructed_original.nii';
-niftiData = load_nii(niftiFile);
+niftiFile = '/home/miguel/GI/2 - Reconstruction/Reconstructed-4D-original/FD_027/FD_027_4D_reconstructed.nii';
+niftiData = niftiread(niftiFile);
 
 % Extract the 4D MRI volume
-stomachMask = niftiData.img; % Binary mask (1 = stomach, 0 = background)
+stomachMask = niftiData; % Binary mask (1 = stomach, 0 = background)
 [numRows, numCols, numSlices, numTimeFrames] = size(stomachMask);
 disp('Size of stomachMask:');
 disp(size(stomachMask)); % Should output [256, 256, Slices, TimeFrames]

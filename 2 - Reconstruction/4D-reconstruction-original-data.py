@@ -1,12 +1,12 @@
-Author: Elizabeth N.
+# Author: Elizabeth N.
 
 import nibabel as nib
 import numpy as np
 import os
 
 # Path to the main directory containing subject folders
-input_dir = '/Users/Reconstructed-3D-original'
-output_dir = '/Users/Reconstructed-4D-original'
+input_dir = 'Reconstructed-3D-original'
+output_dir = 'Reconstructed-4D-original'
 
 # Ensure the output directory exists
 os.makedirs(output_dir, exist_ok=True)

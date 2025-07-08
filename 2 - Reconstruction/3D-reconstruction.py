@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 # Path to the folder containing the 2D slices
 input_folder = '/Users/predictions'
-output_folder = '/Users/Reconstructed-3D-predicted'
+output_folder = 'Reconstructed-3D-predicted'
 os.makedirs(output_folder, exist_ok=True)
 
 # Function to parse the file name and extract subject, time, and slice info
@@ -18,7 +18,7 @@ def parse_filename(filename):
     try:
         subject = f"{parts[0]}_{parts[1]}"  # Combine 'FD' and '031'
         time_point = int(parts[3])  # '86' is in parts[3]
-        slice_idx = int(parts[5])  # '61' is in parts[5]
+        slice_idx = 1  # '61' is in parts[5]
     except (IndexError, ValueError) as e:
         raise ValueError(f"Error parsing time or slice index in file: {filename}") from e
 

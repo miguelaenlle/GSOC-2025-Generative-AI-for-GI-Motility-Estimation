@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import pandas as pd
+import numpy as np
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
+from sklearn.model_selection import KFold
 
 # Define the model
 class CNNClassifier(nn.Module):
@@ -43,11 +45,14 @@ class CNNClassifier(nn.Module):
         return x
 
 # Sample training loop
-def train_discriminator(model, train_loader, val_loader, device, num_epochs=10, lr=1e-3):
+def train_discriminator(model, train_dataset, val_loader, device, num_epochs=10, lr=1e-3):
     model.to(device)
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
     training_results = []
+    cv_val_results = []
+    test_results = []
 
     for epoch in range(num_epochs):
         model.train()
@@ -61,67 +66,125 @@ def train_discriminator(model, train_loader, val_loader, device, num_epochs=10, 
         total_real = 0
         total_fake = 0
 
-        for inputs, labels in train_loader:
-            inputs = inputs.to(device)         # shape: [batch, 1, 266, 266]
-            labels = labels.to(device).float() # shape: [batch], values 0 or 1
+        kf = KFold(n_splits=4, shuffle=True, random_state=42)
 
-            optimizer.zero_grad()
-            outputs = model(inputs).squeeze(1) # shape: [batch]
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+        for fold, (train_idx, cv_val_idx) in enumerate(kf.split(range(len(train_dataset))), 1):
+            train_subset = Subset(train_dataset, train_idx)
+            cv_val_subset   = Subset(train_dataset, cv_val_idx)
 
-            running_loss += loss.item() * inputs.size(0)
-            preds = (outputs >= 0.5).long()
-            correct += (preds == labels.long()).sum().item()
-            total += labels.size(0)
-            
-            correct_real += (preds[labels == 0] == 0).sum().item()
-            total_real += (labels == 0).sum().item()
+            train_loader = DataLoader(train_subset, batch_size=1, shuffle=True, num_workers=4)
+            cv_val_loader   = DataLoader(cv_val_subset,   batch_size=1, shuffle=False, num_workers=4)
 
-            correct_fake += (preds[labels == 1] == 1).sum().item()
-            total_fake += (labels == 1).sum().item()
+            for inputs, labels in train_loader:
+                inputs = inputs.to(device)         # shape: [batch, 1, 266, 266]
+                labels = labels.to(device).float() # shape: [batch], values 0 or 1
 
-        epoch_loss = running_loss / total
-        epoch_acc = correct / total
+                optimizer.zero_grad()
+                outputs = model(inputs).squeeze(1) # shape: [batch]
 
-        training_results.append({
-            'epoch': epoch,
-            'train_loss': epoch_loss,
-            'train_acc': epoch_acc,
-            'correct_real': correct_real,
-            'total_real': total_real,
-            'correct_fake': correct_fake,
-            'total_fake': total_fake
-        })
+                if np.isnan(outputs.cpu().detach().numpy()[0]):
+                    print("NaN detected in outputs")
+                    continue
 
-        # Validation
-        if val_loader is not None:
-            model.eval()
-            val_loss = 0.0
-            val_correct = 0
-            val_total = 0
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+
+                running_loss += loss.item() * inputs.size(0)
+                preds = (outputs >= 0.5).long()
+                correct += (preds == labels.long()).sum().item()
+                total += labels.size(0)
+                
+                correct_real += (preds[labels == 0] == 0).sum().item()
+                total_real += (labels == 0).sum().item()
+
+                correct_fake += (preds[labels == 1] == 1).sum().item()
+                total_fake += (labels == 1).sum().item()
+
+            epoch_loss = running_loss / total
+            epoch_acc = correct / total
+
+            training_results.append({
+                'epoch': epoch,
+                'train_loss': epoch_loss,
+                'train_acc': epoch_acc,
+                'correct_real': correct_real,
+                'total_real': total_real,
+                'correct_fake': correct_fake,
+                'total_fake': total_fake
+            })
+
+            # Cross-validation
+            cv_val_loss = 0.0
+            cv_val_correct = 0
+            cv_val_total = 0
             with torch.no_grad():
-                for inputs, labels in val_loader:
+                for inputs, labels in cv_val_loader:
                     inputs = inputs.to(device)
                     labels = labels.to(device).float()
+
                     outputs = model(inputs).squeeze(1)
+                    if np.isnan(outputs.cpu().detach().numpy()[0]):
+                        print("NaN detected in outputs")
+                        continue
+
                     loss = criterion(outputs, labels)
 
-                    val_loss += loss.item() * inputs.size(0)
+                    cv_val_loss += loss.item() * inputs.size(0)
                     preds = (outputs >= 0.5).long()
-                    val_correct += (preds == labels.long()).sum().item()
-                    val_total += labels.size(0)
+                    cv_val_correct += (preds == labels.long()).sum().item()
+                    cv_val_total += labels.size(0)
 
-            val_loss /= val_total
-            val_acc = val_correct / val_total
+            cv_val_loss /= cv_val_total
+            cv_val_acc = cv_val_correct / cv_val_total
 
             print(f"Epoch [{epoch+1}/{num_epochs}]  "
                 f"Train Loss: {epoch_loss:.4f}  Train Acc: {epoch_acc:.4f}  "
-                f"Val Loss: {val_loss:.4f}  Val Acc: {val_acc:.4f}")
-    return pd.DataFrame(training_results)
+                f"cv_val Loss: {cv_val_loss:.4f}  cv_val Acc: {cv_val_acc:.4f}")
+            
+            cv_val_results.append({
+                'epoch': epoch,
+                'cv_val_loss': cv_val_loss,
+                'cv_val_acc': cv_val_acc
+            })
 
-    
+            if val_loader is not None:
+                # Test
+                model.eval()
+                val_loss = 0.0
+                val_correct = 0
+                val_total = 0
+                with torch.no_grad():
+                    for inputs, labels in val_loader:
+                        inputs = inputs.to(device)
+                        labels = labels.to(device).float()
+                        outputs = model(inputs).squeeze(1)
+
+                        print(outputs, labels)
+                        if np.isnan(outputs.cpu().detach().numpy()[0]):
+                            print("NaN detected in outputs")
+                            continue
+
+                        loss = criterion(outputs, labels)
+
+                        val_loss += loss.item() * inputs.size(0)
+                        preds = (outputs >= 0.5).long()
+                        val_correct += (preds == labels.long()).sum().item()
+                        val_total += labels.size(0)
+
+                val_loss /= val_total
+                val_acc = val_correct / val_total
+
+                print(f"Epoch [{epoch+1}/{num_epochs}]  "
+                    f"Train Loss: {epoch_loss:.4f}  Train Acc: {epoch_acc:.4f}  "
+                    f"Val Loss: {val_loss:.4f}  Val Acc: {val_acc:.4f}")
+                
+                test_results.append({
+                    'epoch': epoch,
+                    'val_loss': val_loss,
+                    'val_acc': val_acc
+                })
+    return pd.DataFrame(training_results), pd.DataFrame(cv_val_results), pd.DataFrame(test_results)
 
 # Example usage:
 if __name__ == "__main__":
@@ -145,4 +208,4 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = CNNClassifier()
-    train(model, train_loader, val_loader, device, num_epochs=5, lr=1e-3)
+    train_discriminator(model, train_loader, val_loader, device, num_epochs=5, lr=1e-3)

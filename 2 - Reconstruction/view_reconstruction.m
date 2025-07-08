@@ -1,7 +1,7 @@
-Author: Elizabeth N.
+% Author: Elizabeth N.
 
 % Path to the reconstructed .nii file
-dataPath = '/Users/reconstructed-og/FD_027/';
+dataPath = 'Reconstructed-3D-original/FD_027/';
 reconstructedFile = 'FD_027_time_1_reconstructed.nii';
 
 % Load the NIfTI file
@@ -30,3 +30,5 @@ title('3D Visualization of Reconstructed Volume');
 colormap gray;
 lighting gouraud;
 camlight headlight;
+
+saveas(gcf, 'reconstructed_volume.png');

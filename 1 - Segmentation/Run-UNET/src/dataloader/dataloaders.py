@@ -22,6 +22,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from src.utils.data_utils import read_image, resize_torch_tensor  
+import albumentations as A
 
 class MadisonDataset(Dataset):
 
@@ -50,8 +51,9 @@ class MadisonDataset(Dataset):
 
 class MadisonDatasetLabeled(Dataset):
     def __init__(self, segmentation_path, augment=False) -> None:
-        self.image_paths = sorted(glob.glob(os.path.join(segmentation_path, '*image*.png')))
+        self.image_paths = [file for file in sorted(glob.glob(os.path.join(segmentation_path, '*image*.png'))) if 'mask' not in file]
         self.mask_paths = sorted(glob.glob(os.path.join(segmentation_path, '*mask*.png')))
+        print('Segmentation path:', segmentation_path)
         print('Number of images:', len(self.image_paths))
         print('Number of masks:', len(self.mask_paths))
         self.fake_image_paths = sorted(glob.glob(os.path.join(segmentation_path, '*fake_image*.png')))
@@ -81,7 +83,17 @@ class MadisonDatasetLabeled(Dataset):
             self.augmentation_transforms = transforms.Compose([
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomVerticalFlip(),
-                transforms.RandomRotation(30),
+                transforms.RandomApply([
+                    transforms.RandomAffine(
+                        degrees=10,                     # rotate_limit=10
+                        translate=(0.0625, 0.0625),     # shift_limit=0.0625
+                        scale=(0.95, 1.05),             # scale_limit=0.05
+                        fill=0
+                    )
+                ], p=0.5),
+                transforms.RandomApply([
+                    transforms.RandomPerspective(distortion_scale=0.05),
+                ], p=0.25)
             ])
 
     def __len__(self) -> int:
@@ -91,7 +103,10 @@ class MadisonDatasetLabeled(Dataset):
         # Load image and mask using cv2
         img = cv2.imread(self.image_paths[index], cv2.IMREAD_GRAYSCALE)
         mask = cv2.imread(self.mask_paths[index], cv2.IMREAD_UNCHANGED)
-        
+
+        if (len(mask.shape) > 2 and mask.shape[-1] != 1):
+            mask = cv2.cvtColor(np.asarray(mask).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+
         if img is None:
             raise FileNotFoundError(f"Image not found at path: {self.image_paths[index]}")
         if mask is None:

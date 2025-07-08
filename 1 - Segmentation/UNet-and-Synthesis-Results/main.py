@@ -216,7 +216,7 @@ def synthesize_with_singan(
         else:
             selected_images = random.sample(train_dataset, num_base_images)
             pd.DataFrame(selected_images).to_csv(os.path.join(train_folder, 'selected_images.csv'), index=False)
-            
+
         # Perform set union between the selected images and existing available base image models
         existing_models = set(np.array(os.listdir(trained_models_folder)) + '.png')
         selected_images = [str(text) for text in (list(set(selected_images) | existing_models))]

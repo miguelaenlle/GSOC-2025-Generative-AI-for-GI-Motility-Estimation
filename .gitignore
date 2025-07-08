@@ -1,1 +1,13 @@
-.DS_Store
+# Ignore everything by default
+*
+
+# Allow only specific file types
+!*.ipynb
+!*.m
+!*.md
+
+# Allow directory structure so allowed files inside folders can be tracked
+!*/
+
+# Explicitly ignore everything in the downloads/ folder
+downloads/
