@@ -1,5 +1,0 @@
-python "/home/miguel/GI/1 - Segmentation/Run-UNET/scripts/train_unet.py" --train_dir "/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/train_dataset" --val_dir "/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/test_dataset" --exp_id "model-none-synthetic-real-ratio-0-roberta-6-18" --epoch 100 --unet_architecture uwm-unet --lr=0.002
-
-python "/home/miguel/GI/1 - Segmentation/Run-UNET/scripts/train_unet.py" --train_dir "/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/full_dataset" --exp_id "model-none-synthetic-real-ratio-0-roberta-6-18" --epoch 100 --unet_architecture uwm-unet --lr=0.002
-
-python guided_diffusion/image_train.py --data_dir '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images' --image_size 256 --out_dir checkpoints --batch_size 1
