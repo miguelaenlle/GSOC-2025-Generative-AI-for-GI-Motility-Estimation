@@ -1,14 +1,14 @@
+## ALSO performs evaluation
+
 import numpy as np
 import torch
 import os
 from tqdm import tqdm
 import sys
 import cv2
-import csv
 import wandb
 import json
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
 from torch import amp
 sys.path.append(os.path.dirname(os.getcwd()))
 sys.path.insert(
@@ -33,7 +33,7 @@ from src.utils.variable_utils import PLOT_DIRECTORY, TRAINING_LOO, VALIDATION_LO
 from sklearn.model_selection import KFold
 import segmentation_models_pytorch as smp
 
-UNET_PERFORMANCE_STATISTICS_FOLDER = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_performance_statistics'
+UNET_LOGS_FOLDER = '/home/miguel/GI/1 - Segmentation/UNet-and-Synthesis-Results/unet_logs'
 
 # Define the plot_metric function
 def plot_metric(x, label, plot_dir, args, metric):
@@ -61,20 +61,18 @@ def parse_path(path):
     slice_idx = parts[4]  # e.g., '7'
     return subject, time_point, slice_idx
 
-def train_model(
-    # model, 
+def train_eval_model(
     train_dataset,
     val_loader, 
-    # optimizer, 
-    # scheduler,
-    # criterion, 
     device, 
     args, 
     discriminator_model = None, 
     discriminator_lr = 1e-3,
-    kfold_cv_enabled = False
+    kfold_cv_enabled = False,
+    eval_only = False
 ):
-    exp_dir_base = os.path.join(UNET_PERFORMANCE_STATISTICS_FOLDER, args.exp_id)
+    breakpoint()
+    exp_dir_base = os.path.join(UNET_LOGS_FOLDER, args.exp_id)
     os.makedirs(exp_dir_base, exist_ok=True)
 
     patience_counter = 0
@@ -158,6 +156,8 @@ def train_model(
             model = model.to(device)
         else:
             model = BaseUNet(in_channels=1, out_channels=1).to(device)
+
+        
 
         print('Learning rate:', args.lr)
 
@@ -396,44 +396,7 @@ def train_model(
                 print(f"Cross-Validation Dice Coefficient for Epoch {epoch}: {cv_dice_mean:.4f}")
             if kfold_cv_enabled:
                 print(f'Cross-Validation Loss: {cv_val_loss:.4f}, Cross-Validation Dice Coefficient: {cv_dice_mean:.4f}')
-                # wandb.log({
-                #     "epoch": epoch,
-                #     'gen_model': args.gen_model,
-                #     'synthetic_real_ratio': args.synthetic_real_ratio,
-                #     "train_loss": train_loss,
-                #     "val_loss": val_loss,
-                #     "dice_coefficient": dice_mean,
-                #     "predictions": [wandb.Image(pred[0], caption=os.path.basename(pred[1])) for pred in current_epoch_predictions]
-                # })
 
-            # Save the model and predictions only if Dice coefficient improves
-            # if dice_mean > best_dice:
-            #     best_dice = dice_mean
-            #     best_dice_epoch = epoch
-            #     best_dice_predictions = current_epoch_predictions  # Update best predictions
-
-              
-            #     patience_counter = 0
-            # else:
-            #     patience_counter += 1
-
-        # Reset the model
-        # model.train()
-        # model.zero_grad()
-
-            # if patience_counter >= patience_limit:
-            #     print(f"Stopping early after {epoch + 1} epochs due to no improvement in Dice coefficient.")
-            #     break
-
-        # Save predictions for the best Dice epoch to disk
-        
-        # save_dir = os.path.join(exp_dir, 'predictions')
-        # os.makedirs(save_dir, exist_ok=True)
-        # for predicted_mask, original_path in best_dice_predictions:
-        #     # Save the predicted mask with a consistent filename
-        #     original_filename = os.path.basename(original_path).replace("_image.png", "_predicted.png")
-        #     save_path = os.path.join(save_dir, original_filename)
-        #     cv2.imwrite(save_path, predicted_mask)
         print(f"Predictions for the best Dice epoch ({best_dice_epoch + 1}) saved.")
 
         # Save best Dice epoch info to a text file
@@ -442,10 +405,7 @@ def train_model(
             f.write(f"Best Epoch: {best_dice_epoch + 1}\n")
             f.write(f"Dice Coefficient: {best_dice:.4f}\n")
             f.write(f"Best Train Loss: {min(train_loss_history):.4f}\n")
-            # f.write(f"Best Val Loss: {min(val_loss_history):.4f}\n")
-            # f.write(f"Best Val Loss: {min(val_loss_history):.4f}\n")
             f.write(f"Train Loss History: {json.dumps(train_loss_history)}\n")
-            # f.write(f"Val Loss History: {json.dumps(val_loss_history)}\n")
 
         # Save the final epoch predictions to exp_dir
         for epoch_prediction in current_epoch_predictions:
@@ -532,21 +492,6 @@ def train_model(
         plt.close()
         print(f"Loss and Dice coefficient plots saved to {plot_save_path}")
 
-
-        # Plot and save Dice coefficient curve
-        # plot_save_path = plot_metric(x=dice_coef_history,
-        #             label="Dice Coefficient",
-        #             plot_dir=exp_dir,
-        #             args=args,
-        #             metric='dice_coeff')
-
-        # Save the curve to wandb
-        # wandb.log({
-        #     "dice_coefficient_curve": wandb.Image(plot_save_path),
-        #     "synthetic_real_ratio": args.synthetic_real_ratio,
-        #     "gen_model": args.gen_model
-        # })
-
         print("Training completed.")
 
 if __name__ == "__main__":
@@ -583,6 +528,7 @@ if __name__ == "__main__":
     else:
         model = BaseUNet(in_channels=1, out_channels=1).to(device)
 
+
     print('Learning rate:', args.lr)
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
@@ -603,14 +549,12 @@ if __name__ == "__main__":
         name=f"unet_{args.gen_model}_benchmark_{timestamp}"
     )
 
-    train_model(
-        # model=model,
-                train_dataset=train_dataset,
-                val_loader=val_loader,
-                # optimizer=optimizer,
-                # scheduler=scheduler,
-                # criterion=criterion,
-                device=device,
-                args=args,
-                discriminator_model=None)
+    train_eval_model(
+        train_dataset=train_dataset,
+        val_loader=val_loader,
+        device=device,
+        args=args,
+        discriminator_model=None,
+        eval_only=args.eval_only,
+    )
 

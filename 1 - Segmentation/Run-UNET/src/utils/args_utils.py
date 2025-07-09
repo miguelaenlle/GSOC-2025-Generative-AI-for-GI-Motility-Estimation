@@ -28,6 +28,8 @@ def train_arg_parser():
     parser.add_argument('--gen_model', type=str, default='') # path to the generator model
     parser.add_argument('--synthetic_real_ratio', type=float, default=0, help='Ratio of synthetic to real data in training')
     parser.add_argument('--unet_architecture', type=str, default='') # architecture to use
+    parser.add_argument('--eval_only', type=bool, help='If true, only run the model on the validation set without training')
+    parser.add_argument('--model_weights_path', type=str, help='Path to the model weights to load for evaluation')
     args = parser.parse_args()
     return args
 

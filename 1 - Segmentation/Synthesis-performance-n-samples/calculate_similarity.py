@@ -110,21 +110,3 @@ def evaluate_folder(real_folder, synthetic_rgba_folder):
     df_results.to_csv('evaluation_results.csv')
 
     return df_results
-
-# if __name__ == "__main__":
-#     # Path to the real data, in RGBA format already
-#     real_folder = "/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Input/data-RGBA"         # converted to rgba, combines real images + real masks
-
-#     # Output of merged synthetic images and masks
-#     output_folder = "/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/Postprocess/postprocessing_output"         # converted to rgba, combines synthetic images + synthetic masks
-
-#     # Contains the synthetic images
-#     synthetic_folder = "/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/output_preparation/random_samples_split/synthetic_images"  # typically rgb
-
-#     # Contains the masks
-#     masks_folder = "/home/miguel/GI/1.5 - Synthetic Data Generation/Singan-Seg/output_preparation/random_samples_split/masks"            # typically grayscale
-
-#     # Looks at real and synthetic folder. Ensures that the synthetic images and masks are in RGBA format. And that the corresponding real images and masks exist. 
-#     # process_folders(real_folder, synthetic_folder, masks_folder, output_folder)
-
-#     evaluate_folder(real_folder, output_folder)
