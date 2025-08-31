@@ -1,8 +1,8 @@
 % Author: Elizabeth N.
 
 % Path to the reconstructed .nii file
-dataPath = 'Reconstructed-3D-original/FD_027/';
-reconstructedFile = 'FD_027_time_1_reconstructed.nii';
+dataPath = 'Reconstructed-3D-original/FD_030/';
+reconstructedFile = 'FD_030_time_119_reconstructed.nii';
 
 % Load the NIfTI file
 niftiData = niftiread(fullfile(dataPath, reconstructedFile));

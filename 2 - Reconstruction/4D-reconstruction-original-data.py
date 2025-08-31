@@ -2,6 +2,8 @@
 
 import nibabel as nib
 import numpy as np
+import shutil
+import gzip
 import os
 
 # Path to the main directory containing subject folders
@@ -9,6 +11,7 @@ input_dir = 'Reconstructed-3D-original'
 output_dir = 'Reconstructed-4D-original'
 
 # Ensure the output directory exists
+
 os.makedirs(output_dir, exist_ok=True)
 
 # Iterate over each subject folder
@@ -43,7 +46,13 @@ for subject in os.listdir(input_dir):
         # Save to the subject's output folder
         subject_output_folder = os.path.join(output_dir, subject)
         os.makedirs(subject_output_folder, exist_ok=True)
-        output_file = os.path.join(subject_output_folder, f"{subject}_4D_reconstructed.nii.gz")
+        output_file = os.path.join(output_dir, f"4D_reconstructed.nii.gz")
         nib.save(nii_4d, output_file)
-        
+
+        nii_path = output_file[:-3]
+
+        # decompress
+        with gzip.open(output_file, 'rb') as f_in, open(nii_path, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
         print(f"4D volume saved to {output_file}")

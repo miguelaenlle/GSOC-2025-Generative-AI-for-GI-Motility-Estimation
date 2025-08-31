@@ -185,11 +185,15 @@ def compute_ssim_mse(real_roi, synthetic_roi):
 
 def synthesis_performance_benchmark_diffusion(
     custom_cv_subjects: list[str] = None,
+    hq_samples_only: bool = True,
     datestamp: str = None,
+    num_samples: int = 10, # per image
     skip_training: bool = True,
-    gpu_id: int = 0
+    gpu_id: int = 0,
+    singan_augmented_dataset: bool = False,
+    skip_validation: bool = False
 ):
-    stomach_data_and_masks_dir_path = '/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/full_dataset'
+    stomach_data_and_masks_dir_path = '/home/miguel/GI/0 - Data Exploration & Analysis/GI-Roberta/gi-roberta-dataset/' + ('full_dataset' if not singan_augmented_dataset else 'full_dataset_augmented_hq') 
     
     available_filenames = [filename for filename in os.listdir(stomach_data_and_masks_dir_path) if 'mask' not in filename]
 
@@ -200,10 +204,13 @@ def synthesis_performance_benchmark_diffusion(
     })
 
     if not skip_training:
-        for cv_val_subject in filenames_and_subjects['subject'].unique():
+        cv_subjects = custom_cv_subjects if custom_cv_subjects else filenames_and_subjects['subject'].unique()
+        for cv_val_subject in cv_subjects:
             filenames_and_subjects_train = filenames_and_subjects[filenames_and_subjects['subject'] != cv_val_subject]
+            filenames_and_subjects_val_subject_train = filenames_and_subjects[filenames_and_subjects['subject'] == cv_val_subject]
 
-            base_path = f'/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta/{cv_val_subject}'
+            base_path = f'/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta{'-aug' if singan_augmented_dataset else ''}/{cv_val_subject}'
+            base_path_val = f"{base_path}_val"
 
             # Create the base path if it doesn't exist
             os.makedirs(base_path, exist_ok=True)
@@ -211,14 +218,27 @@ def synthesis_performance_benchmark_diffusion(
             masked_images_path = f'{base_path}/masked-images'
             masks_path = f'{base_path}/masks'
 
+            masked_images_val_path = f'{base_path_val}/masked-images'
+            masks_val_path = f'{base_path_val}/masks'
+
             if os.path.exists(masked_images_path):
                 shutil.rmtree(masked_images_path)
 
             if os.path.exists(masks_path):
                 shutil.rmtree(masks_path)
 
+            if not skip_validation:
+                if os.path.exists(masked_images_val_path):
+                    shutil.rmtree(masked_images_val_path)
+
+                if os.path.exists(masks_val_path):
+                    shutil.rmtree(masks_val_path)
+
             os.makedirs(masked_images_path, exist_ok=True)
             os.makedirs(masks_path, exist_ok=True)
+
+            os.makedirs(masked_images_val_path, exist_ok=True)
+            os.makedirs(masks_val_path, exist_ok=True)
 
             # Filter out any empty mask training dataset images. 
             excluded_files = []
@@ -237,62 +257,93 @@ def synthesis_performance_benchmark_diffusion(
  
             # Train the diffusion model on the fold's training set.
             for file in tqdm(filenames_and_subjects_train['image_filename'].unique()):
-                mask_filename = file.replace('image.png', 'mask.png')
-                    
+                if '_img.png' not in file:
+                    mask_filename = file.replace('image.png', 'mask.png')
+                else:
+                    mask_filename = file.replace('_img.png', '_mask.png')
+
                 old_filepath = os.path.join(stomach_data_and_masks_dir_path, mask_filename)
                 new_filepath = os.path.join(masks_path, file)
                 if not os.path.exists(new_filepath):
                     shutil.copy(old_filepath, new_filepath)
+
                 old_filepath = os.path.join(stomach_data_and_masks_dir_path, file)
                 new_filepath = os.path.join(masked_images_path, file)
                 image = io.read_image(old_filepath, mode=io.ImageReadMode.RGB).to(torch.uint8)
                 if not os.path.exists(new_filepath):
                     io.write_png(image, new_filepath)
-        
+
+            if not skip_validation:
+                num_images = 0
+                for file in tqdm(filenames_and_subjects_val_subject_train['image_filename'].unique()):
+                    is_synthetic = file.endswith('_img.png')
+                    if is_synthetic:
+                        continue # We will only perform validation with non-synthetic images.
+                    mask_filename = file.replace('image.png', 'mask.png')
+
+                    old_filepath = os.path.join(stomach_data_and_masks_dir_path, mask_filename)
+                    new_filepath = os.path.join(masks_val_path, file)
+                    if not os.path.exists(new_filepath):
+                        shutil.copy(old_filepath, new_filepath)
+                    old_filepath = os.path.join(stomach_data_and_masks_dir_path, file)
+                    new_filepath = os.path.join(masked_images_val_path, file)
+                    image = io.read_image(old_filepath, mode=io.ImageReadMode.RGB).to(torch.uint8)
+                    if not os.path.exists(new_filepath):
+                        io.write_png(image, new_filepath)
+                        num_images += 1
+                print('Number of images selected for validation',num_images)
+
             # Generate bounding boxes.
-            bounding_boxes_json = {}
+            for curr_set in ['train', 'val']:
+                bounding_boxes_json = {}
 
-            lengths = []
-            excluded_files_set = set(excluded_files)
-            for mask_file in tqdm(os.listdir(masks_path)):
-                if mask_file in excluded_files_set:
-                    print(f"Skipping excluded file: {mask_file}")
-                    continue
-                mask_path = os.path.join(masks_path, mask_file)
-                mask = io.read_image(mask_path, mode=io.ImageReadMode.UNCHANGED)
+                lengths = []
+                excluded_files_set = set(excluded_files)
 
-                try:
-                    bboxes = get_bbox_from_mask(mask)
-                except:
-                    bboxes = []
+                curr_masks_path = masks_path if curr_set == 'train' else masks_val_path
 
-                formatted_bboxes = []
+                for mask_file in tqdm(os.listdir(curr_masks_path)):
+                    if mask_file in excluded_files_set:
+                        print(f"Skipping excluded file: {mask_file}")
+                        continue
+                    mask_path = os.path.join(curr_masks_path, mask_file)
+                    mask = io.read_image(mask_path, mode=io.ImageReadMode.UNCHANGED)
 
-                for bbox in bboxes:
-                    x_min, y_min, x_max, y_max = bbox.tolist()
-                    formatted_bboxes.append({
-                        'label': 'stomach',
-                        'x_min': int(x_min),
-                        'y_min': int(y_min),
-                        'x_max': int(x_max),
-                        'y_max': int(y_max)
-                    })
+                    try:
+                        bboxes = get_bbox_from_mask(mask)
+                    except:
+                        bboxes = []
 
-                bounding_boxes_json[mask_file] = {
-                    'height': mask.shape[1],
-                    'width': mask.shape[2],
-                    'bbox': formatted_bboxes
-                }
-                lengths.append(len(formatted_bboxes))
+                    formatted_bboxes = []
 
-            bounding_boxes_path = f'/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta/{cv_val_subject}/bounding-boxes.json'
+                    for bbox in bboxes:
+                        x_min, y_min, x_max, y_max = bbox.tolist()
+                        formatted_bboxes.append({
+                            'label': 'stomach',
+                            'x_min': int(x_min),
+                            'y_min': int(y_min),
+                            'x_max': int(x_max),
+                            'y_max': int(y_max)
+                        })
 
-            with open(bounding_boxes_path, 'w') as f:
-                json.dump(bounding_boxes_json, f, indent=4)
-                image_train_py = '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/image_train.py'  
-                python_command = f"""
-            python '{image_train_py}' --data_dir '{base_path}' --image_size 256 --out_dir checkpoints-cv-val-subj-{cv_val_subject} --batch_size 1
-                """
+                    bounding_boxes_json[mask_file] = {
+                        'height': mask.shape[1],
+                        'width': mask.shape[2],
+                        'bbox': formatted_bboxes
+                    }
+                    lengths.append(len(formatted_bboxes))
+
+                bounding_boxes_path = f'/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta/{cv_val_subject}/bounding-boxes{'-val' if curr_set == 'val' else ''}.json'
+
+                with open(bounding_boxes_path, 'w') as f:
+                    json.dump(bounding_boxes_json, f, indent=4)
+
+
+            image_train_py = '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/image_train.py'  
+
+            python_command = f"""
+        python '{image_train_py}' --cv_subject '{cv_val_subject}' --data_dir '{base_path}' --image_size 256 --out_dir checkpoints-cv-val-subj-{cv_val_subject} --batch_size 1 --gpu_id {gpu_id} --skip_validation {skip_validation} {f"--validation_dir '{base_path_val}'" if not skip_validation else ""} --singan_augmented_dataset {'1' if singan_augmented_dataset else '0'}
+            """
 
             try:
                 print(f"Running command: {python_command}")
@@ -318,8 +369,6 @@ def synthesis_performance_benchmark_diffusion(
 
         folder = f'{checkpoint_folder_name}/{diffuse_gen_folder}'
 
-        print(folder)
-
         latest_model_file = max(
             (entry for entry in os.scandir(folder) if entry.is_file() and 'model' in entry.name and entry.name.endswith('.pt')),
             key=lambda e: e.stat().st_ctime  # Use st_mtime if you want "last modified" instead
@@ -331,9 +380,11 @@ def synthesis_performance_benchmark_diffusion(
         os.makedirs(output_path, exist_ok=True)
         main_py = '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/main.py'
 
+        data_dir = f'/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta{"-hq-masks" if hq_samples_only else ""}/{cv_val_subject}/masked-images'
+
         synthesize_samples_py = f"""
     python '{main_py}' \
-    --data_dir '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta/{cv_val_subject}/masked-images' \
+    --data_dir '{data_dir}' \
     --output_path '{output_path}' \
     --model_path '{model_path}' \
     --cluster_model_dir 'clustering' \
@@ -341,7 +392,7 @@ def synthesis_performance_benchmark_diffusion(
     --timestep_respacing 200 \
     --skip_timesteps 80 \
     --model_output_size 256 \
-    --num_samples 1 \
+    --num_samples {num_samples} \
     --batch_size 1 \
     --use_noise_aug_all \
     --use_colormatch \
@@ -354,201 +405,84 @@ def synthesis_performance_benchmark_diffusion(
             result = subprocess.run(synthesize_samples_py, shell=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"An error occurred while processing: {e}")
-    return
-    # Evaluate the SSIM of the generated samples
-    original_images_folder_path = '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/guided_diffusion/segmented-images-roberta/masked-images'
-
-    filename_images = {}
-    original_sample_filenames = os.listdir(original_images_folder_path)
-
-    for filename in original_sample_filenames:
-        if filename.endswith('.png'):
-            img_path = os.path.join(original_images_folder_path, filename)
-            image = Image.open(img_path)
-            filename_images[filename] = image
-        else:
-            continue
-
-
-    base = '/home/miguel/GI/1.5 - Synthetic Data Generation/diffuse-gen/diffuse-gen/image_samples'
-
-    latest_dir = max(
-        (entry for entry in os.scandir(base) if entry.is_dir()),
-        key=lambda e: e.stat().st_mtime      # use st_ctime on macOS / Windows if you want “created” time
-    ).path
-
-    img_path = max(
-        (entry for entry in os.scandir(latest_dir) if entry.is_file() and entry.name.endswith('.pkl') and 'styled' not in entry.name),
-        key=lambda e: e.stat().st_mtime
-    ).path
-
-    styled_img_path = img_path.replace('samples_', 'styled_samples_')
-
-    with open(img_path, "rb") as f:
-        images = pickle.load(f)
-    with open(styled_img_path, "rb") as f:
-        styled_images = pickle.load(f)
-
-    total_ssim = 0
-
-    for key in styled_images.keys():
-        styled_image = styled_images[key]
-        styled_image = styled_image[0]
-
-        # Split image and mask
-        image = styled_image[:, :, :3]  # RGB image (values 0-255)
-        mask = styled_image[:, :, 3]    # Single-channel mask (values 0-255)
-
-        # Evaluate SSIM compared to its original base image
-        filename = key.split('/')[-1]
-
-        original_image = filename_images[filename]
-        original_image = np.array(original_image)
-        original_image = cv2.resize(original_image, (256, 256), interpolation=cv2.INTER_LANCZOS4)
-
-        original_image = original_image[:, :, :3]
-        original_image = original_image.astype(np.uint8)
-
-        # Convert images to grayscale
-        image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        original_image_gray = cv2.cvtColor(original_image, cv2.COLOR_RGB2GRAY)
-
-        # Calculate SSIM
-        image_gray = image_gray.astype(np.uint8)
-        original_image_gray = original_image_gray.astype(np.uint8)
-
-        ssim_value = ssim(image_gray, original_image_gray)
-        mse_value = np.mean((image_gray - original_image_gray) ** 2)
-
-        total_ssim = total_ssim + ssim_value
-
-    mean_ssim = total_ssim / len(styled_images)
-
-    if datestamp:
-        performance_df_filename = f'synthesis_performance_benchmark_diffusion_{sample_size_name}_{datestamp}.csv'
-        if os.path.exists(performance_df_filename):
-            performance_df = pd.read_csv(performance_df_filename)
-            performance_df = performance_df.append({
-                'sample_size': sample_size,
-                'mean_ssim': mean_ssim,
-                'num_samples': num_samples_to_generate
-            }, ignore_index=True)
-        else:
-            performance_df = pd.DataFrame({
-                'sample_size': [sample_size],
-                'mean_ssim': [mean_ssim],
-                'num_samples': [num_samples_to_generate]
-            })
-        performance_df.to_csv(performance_df_filename, index=False)
-
-def synthesis_performance_benchmark_trained(
-    sample_size: int
-):
-    case_slice_images = os.listdir('TrainedModels')
-    for model in case_slice_images:
-        if not os.path.exists(os.path.join('TrainedModels', model, 'scale_factor=0.750000,alpha=10', 'Gs.pth')):
-            case_slice_images.remove(model)
-    
-    # Randomly select sample_size images
-    sampled_images = random.sample(case_slice_images, sample_size)
-
-    synthetic_output_folder = f"{random_samples_folder}_sample_size_{sample_size}".replace('.', '_')
-
-    num_successes = 0
-
-    for case_slice_image_filename_random in tqdm(sampled_images):
-        case_slice_image_filename_random = case_slice_image_filename_random + '.png'
-        # Copy the selected image to the real training dataset folder
-        shutil.copy(
-            os.path.join(full_dataset_folder, case_slice_image_filename_random),
-            os.path.join(real_training_dataset_folder, case_slice_image_filename_random)
-        )
-
-
-        model_folder = os.path.join(trained_models_folder, case_slice_image_filename_random[:-4])
-
-        if os.path.exists(model_folder) and os.path.exists(os.path.join(model_folder, 'scale_factor=0.750000,alpha=10', 'Gs.pth')):
-            python_command = f"python '{random_samples_py}' --input_name '{case_slice_image_filename_random}' --input_dir='{full_dataset_folder}' --mode random_samples --gen_start_scale 0 --nc_z 4 --nc_im 4 --gpu_id 0 --num_samples {num_samples_to_generate} --out '{synthetic_output_folder}'"
-        else:
-            python_command = f"python '{main_train_py}' --input_name '{case_slice_image_filename_random}'  --input_dir='{full_dataset_folder}' --nc_z 4 --nc_im 4 --gpu_id 0 --num_samples {num_samples_to_generate} --out '{synthetic_output_folder}'"
-
-        try:
-            print(f"Running command: {python_command}")
-            result = subprocess.run(python_command, shell=True, check=True)
-            num_successes += 1
-            print(f"Command completed successfully for {case_slice_image_filename_random}\n")
-        except subprocess.CalledProcessError as e:
-            print(f"An error occurred while processing {case_slice_image_filename_random}: {e}")
-            continue  # Continue processing the next image if an error occurs
-
-    
-    print(f"Successfully processed {num_successes} out of {len(sampled_images)} images.")
-
-    real_folder = full_dataset_folder
-    output_folder = singan_output_from_similarity_folder
-
-    synthetic_folder = os.path.join(singan_output_from_similarity_folder, 'synthetic_images')
-    masks_folder = os.path.join(singan_output_from_similarity_folder, 'masks')
-
-    if os.path.exists(output_folder):
-        shutil.rmtree(output_folder)
-    if os.path.exists(synthetic_folder):
-        shutil.rmtree(synthetic_folder)
-    if os.path.exists(masks_folder):
-        shutil.rmtree(masks_folder)
-
-    os.makedirs(synthetic_folder, exist_ok=True)
-    os.makedirs(masks_folder, exist_ok=True)
-
-    image_files = glob.glob(os.path.join(synthetic_output_folder, '**', '*_img.png'), recursive=True)
-    mask_files = glob.glob(os.path.join(synthetic_output_folder, '**', '*_mask.png'), recursive=True)
-    for img_file in image_files:
-        case_name = img_file.split('/')[-3]
-        img_name = img_file.split('/')[-1][:-8]  # Remove '_img.png' suffix
-        new_name = f"{case_name}_{img_name}.png"
-        
-        shutil.copy(img_file, f'{synthetic_folder}/{new_name}')
-
-    for mask_file in mask_files:
-        case_name = mask_file.split('/')[-3]
-        mask_name = mask_file.split('/')[-1][:-9]  # Remove '_mask.png' suffix
-        new_name = f"{case_name}_{mask_name}.png"
-        shutil.copy(mask_file, f'{masks_folder}/{new_name}')
-
-    process_folders(real_folder, synthetic_folder, masks_folder, output_folder)
-    
-    evaluation_results = evaluate_folder(real_folder, output_folder)
-
-    evaluation_results.to_csv(f'{all_eval_folder}/evaluation_results_sample_size_{sample_size}.csv', index=False)
-
-    # TODO: Adjust batch sizes
-
-    discriminator_dataset = RealAndSyntheticImageDataset(
-        sample_size, synthetic_folder, real_training_dataset_folder
-    )
-
-    discriminator_train_loader = DataLoader(discriminator_dataset, batch_size=min(max(1, sample_size // 10), 10), shuffle=True)
-
-    discriminator_model = CNNClassifier()
-
-    discriminator_training_results, discriminator_cv_val_results, discriminator_testing_results =  train_discriminator(
-        discriminator_model,
-        discriminator_dataset,
-        None,
-        device='cuda' if torch.cuda.is_available() else 'cpu',
-        num_epochs=100,
-        lr=0.001,
-    )
-
-    pd.DataFrame(discriminator_training_results).to_csv(f"discriminator_training_results/discriminator_performance_{sample_size}_samples.csv")
-    pd.DataFrame(discriminator_cv_val_results).to_csv(f"discriminator_training_results/discriminator_cv_val_performance_{sample_size}_samples.csv")
-    pd.DataFrame(discriminator_testing_results).to_csv(f"discriminator_training_results/discriminator_testing_performance_{sample_size}_samples.csv")
-
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Run diffusion synthesis performance benchmark"
+    )
+    parser.add_argument(
+        '--custom-cv-subjects', '-c',
+        type=str,
+        default="FD-027,FD-029,FD-030,FD-031,FD-032",
+        help="Comma-separated list of CV subject identifiers (e.g. ‘FD-001,FD-002’)."
+    )
+    parser.add_argument(
+        '--skip-training', '-s',
+        action='store_true',
+        help="If set, skips the training phase."
+    )
+    parser.add_argument(
+        '--datestamp', '-d',
+        type=str,
+        default=None,
+        help="Use a fixed datestamp (format YYYY-MM-DD_HH-MM-SS)."
+    )
+    parser.add_argument(
+        '--gpu-id', '-g',
+        type=int,
+        default=1,
+        help="GPU device ID to use."
+    )
+    parser.add_argument(
+        '--hq-samples-only', '-hq',
+        action='store_true',
+        help="If set, only uses high-quality samples for synthesis."
+    )
+    parser.add_argument(
+        '--num-samples', '-n',
+        type=int,
+        default=30,
+        help="Number of samples to synthesize per image."
+    )
+    parser.add_argument(
+        '--singan-augmented-dataset', '-sa',
+        action='store_true',
+        help="If set, uses the SiGAN augmented dataset."
+    )
+    parser.add_argument(
+        '--skip-validation', '-sv ',
+        action='store_true',
+        help="If set, skips the validation phase."
+    )
+
+    args = parser.parse_args()
+
     exp_datestamp = pd.Timestamp.now().strftime('%Y-%m-%d_%H-%M-%S')
-    synthesis_performance_benchmark_diffusion(custom_cv_subjects=[], skip_training = True, datestamp = exp_datestamp, gpu_id = 1)
-    
+
+    synthesis_performance_benchmark_diffusion(custom_cv_subjects=args.custom_cv_subjects.split(','), skip_training=args.skip_training, datestamp=exp_datestamp, gpu_id=args.gpu_id, hq_samples_only=args.hq_samples_only, num_samples=args.num_samples, singan_augmented_dataset=args.singan_augmented_dataset, skip_validation=args.skip_validation)
+
 if __name__ == "__main__":
     main()
 
+# 
+# python train_diffusion_models_and_synthesize_images.py -c FD-027,FD-029,FD-031,FD-032 -s -g 0 -hq -n 30
+
+# python train_diffusion_models_and_synthesize_images.py -c FD-027 -s -g 1 -hq -n 30
+
+#
+# python train_diffusion_models_and_synthesize_images.py -c FD-03 -g 1 -s
+
+
+# python train_diffusion_models_and_synthesize_images.py -c FD-030 -g 0 
+# 
+# python train_diffusion_models_and_synthesize_images.py --custom-cv-subjects FD-032 --skip-training --gpu-id 1
+#
+# python train_diffusion_models_and_synthesize_images.py --custom-cv-subjects FD-030 -hq -n 30
+
+# python train_diffusion_models_and_synthesize_images.py -c FD-027,FD-029,FD-031,FD-032 -g 0
+
+# python train_diffusion_models_and_synthesize_images.py -c FD-027,FD-029,FD-030,FD-031,FD-032 -g 0
+
+# python train_diffusion_models_and_synthesize_images.py -c FD-027,FD-029,FD-031,FD-032 -g 0 -sv
+
+# python train_diffusion_models_and_synthesize_images.py -c FD-027,FD-029,FD-030,FD-031,FD-032 -g 0 -sa

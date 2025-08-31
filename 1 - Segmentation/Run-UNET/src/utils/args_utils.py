@@ -25,11 +25,14 @@ def train_arg_parser():
     parser.add_argument('--epoch', type=int, default=50) # default 30
     parser.add_argument('--train_dir', type=str, default=TRAINING_LOO)
     parser.add_argument('--val_dir', type=str)
+    parser.add_argument('--finetuning_dir', type=str)
     parser.add_argument('--gen_model', type=str, default='') # path to the generator model
     parser.add_argument('--synthetic_real_ratio', type=float, default=0, help='Ratio of synthetic to real data in training')
     parser.add_argument('--unet_architecture', type=str, default='') # architecture to use
-    parser.add_argument('--eval_only', type=bool, help='If true, only run the model on the validation set without training')
+    parser.add_argument('--eval_only', type=str, help='If true, only run the model on the validation set without training')
     parser.add_argument('--model_weights_path', type=str, help='Path to the model weights to load for evaluation')
+    parser.add_argument('--self_supervised_finetuning', type=str, help='If true, use self-supervised finetuning')
+    parser.add_argument('--pixelwise_confidence_threshold', type=float, default=0.9, help='Confidence threshold for pixelwise predictions')
     args = parser.parse_args()
     return args
 
