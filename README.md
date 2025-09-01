@@ -1,107 +1,192 @@
-## ***AN AUTOMATED SEGMENTATION PIPELINE FOR QUANTIFYING GASTRIC MOTILITY IN HUMANS USING 4D CINE MAGNETIC RESONANCE IMAGING***
+# Leveraging Generative AI to Enhance Cine MRI Motility Estimation
 
+This GitHub repostiory has been developed under GSoC 2025.
 
-![banner-1](banner-1.png)
+Contributor: Miguel Aenlle
 
-### **Pipeline Documentation**
+Organization: Department of Biomedical Informatics, Emory University
 
-#### **Preprocessing**
+Mentors: Dr. Babak Mahmoudi, Ozgur Kara
 
-- Use this file to view the temporal image and mask together over time: `/view-temporal-images-and-masks.m`
-- Then use this file to check keys and dimensions etc: `/check-file-details.m`
-- Break down ALL original 4d file into individual frames or slices with this file `make-cine-mri-pngs.m`
-- Turn the .mats into pngs and rename using `convert-mat-to-png.py`
-- Resize images: Use `resize-to-256.m` to resize to 256x256 pixels
-- If the image is in RGB format, convert it to grayscale
-- Remove any images that do not have a corresponding mask (occured in both depth and cine sets) with `remove-blank-mask-pairs.m`
-- Check `deleted_files_list.txt` that gets produced for the list of images removed
-- Check remaining files: `count-files-after-deletion.m`
-- Use `check-cine-data-dist.m` to check the distribution and any imbalance over slices and time
+## Overview
 
-Optional Contrast/Brightness Enhancing
-- Calculate RMS contrast for each image 
-- Use a grid search algorithm to go over different brightness and contrast levels
-  
-#### **Synthetic Data Generation with SINGAN-seg**
+Gastric motility assessment using cine MRI provides a non‐invasive, radiation‐free approach to quantifying peristaltic motion in the GI tract, yet its widespread adoption is constrained by the scarcity of high‐quality, annotated datasets. 
 
-1. Before running synthetic data generation, the input must be processed correctly: 
-- The data needs to be pre-processed into RGBA (Red, Green, Blue, Alpha) format. The first three channels (RGB) contain the image information, while the fourth channel (Alpha) can represent the binary mask (the ground truth segmentation of the stomach)
-- Run the data through `create_4channel.ipynb` to get it into 4-channel RGBA format for SINGAN
-- This output is essentially our Input for SinGAN-seg
+To overcome this limitation, we designed a modular, end‐to‐end pipeline that leverages generative image models to produce realistic synthetic MRI scans with corresponding segmentation masks, trains and evaluates segmentation networks, and enables automated motility quantification.
 
-2. For each slice run:
-- `python main_train.py --input_name FD_029_slice_24_RGBA-4c.png --nc_z 4 --nc_im 4 --gpu_id 0`
-OR
-- `python main_train.py --input_name FD_029_slice_24_RGBA-4c.png --nc_z 4 --nc_im 4 --gpu_id 0 --scale_factor 0.85`
+The full written report is available [here](https://docs.google.com/document/d/1DyGz7kE48id6yXDDv9JkjFSsO5zS3Njk_AjFDcRDXgg/edit?usp=sharing).
 
-This uses `main_train.py` to:
-- Train on each slice: For every slice (let's say `FD_029_slice_24_RGBA-4c.png`), you run this command:
-- Then, generate synthetic images for that slice: After the model is trained, you will use it to generate synthetic images for the same slice
-- This command will load the trained model from `TrainedModels/FD_029_slice_24_RGBA-4c` and generate 10 (or however many) synthetic images and masks for the same slice.
-- The generated image/masks can be found in Output > RandomSamples>name of slice
-- The trained models can be found in `Trained_Models` folder
+## Pipeline Modules
+Our pipeline consists of the following modules: 
+1. **Data preprocessing**: Prepare the base dataset of annotated MRI scans. 
+2. **Generative model benchmarking**: Acquire representative samples and statistics from the generative models. We support SinGAN-Seg based synthesis and diffuse-gen based synthesis.
+3. **Generative model image synthesis:** Generate augmented datasets of varying sizes for use in training. 
+4. **Segmentation training/evaluation:** Train the segmentation model on the generated augmented dataset and evaluate its performance with a leave-one-out scheme per subject.
+5. **Motility estimation and analysis:** Using trained models from Step 4 and the dataset, quantify motility by acquiring the stomach volume over time, dominant peristaltic frequency, and wave propagation speeds. 
 
-To LOOP over the entire dataset, run the script (with no additional parameters, and make sure to set n_samples in both locations in the script to how much synthetic data you want: python `generate-synthetic-generation.py`
+## Dataset
+We utilized a private, clinical Cine MRI dataset of the gastrointestinal (GI) tract, consisting of five healthy adult subjects. 
 
-3. After you get the synthetic images and masks: convert the synthetic images to RGBA format by combining them with their corresponding segmentation masks.
+For each subject, 72 paired image and segmentation mask slices were captured across 132 temporal frames, yielding a total of 9,504 image–mask pairs. Manual annotations were available for only one temporal frame per subject; these single-frame labels served as the ground truth for both model training and evaluation.
 
-4. Calculate the SSIM, MSE, and Dice scores for each image pair with `similarity-metrics.py` to decide whether synthetchic data meets quality standard or not
+## Getting started
+During our experimentation, we used a Ubuntu-based workstation with 2 NVIDIA 4090 GPUs.
 
-5. Adding synthetic data to UNET
-- Take the RandomSamples folder and run it through `move-singan-results-to-preprocessing.py` to get a new folder with the synthetic data extracted from all the subfolders
-- You need to change the dimension of the image because synthetic data is RBG, but the expected image must be grayscale. The color format or mode difference in the mask files can be a problem if the masks and images have inconsistent channel dimensions (e.g., single-channel grayscale for masks vs. multi-channel RGBA for images).
-- Now the data is ready for segmentation in the `RandomSamples_ready` folder.
+1. Clone the repository
+```
+git clone https://github.com/yourusername/your-repo.git
+cd your-repo
+```
 
-#### **UNET Segmentation**
+2. Create and activate the conda 
+```
+conda env create -f environment.yml
+conda activate motility-pipeline
+```
 
-1. Download `Run-UNET` codebase (also called `gsoc-2024`)
-2. Conda activate `TORCHUNET` environment and make sure all packages are installed
-3. Data preparation: separate data into `TRAINING_LOO` and `VALIDATION_LOO` where training has x4 subjects and validation has the 1 subject left out
-  - Ensure: After each training/validation run, switch the subject left out for LOO (there should be 5 runs)
+## Running Pipeline Modules
 
-2. Running the model
-- cd to scripts and run train_unet.py in the terminal with:
-- python `train_unet.py --device cuda:1 --exp_id seg/27-temp-run1 --epoch 25`
-- OR with parameters e.g:
-- ​​python `train_unet.py --bs 8 --device cuda:1 --exp_id LOO27test5 --epoch 20`
-     - Lowering batch helps with GPU
-     - 27 is an example of the “experiment’s id,” named after the subject currently being left out
-     - Thus, make sure to rename the exp-id for each switch of LOO validation
-     - Can change epochs parameter (standard is 30) and which GPU to run on (use GPU not local)
-     - Patience is set to 10 If the dice coefficient doesn’t improve, it’ll stop, can change as needed
-     - Should see a progress bar in the terminal for each epoch as it runs
-  - Output is found in `reports` folder under `exp-id` name and should include:
-     - Only the best model to save memory space (tracks best validation score)
-     - A figure showing images for each batch/epoch for a visual sanity check
-     - Once completed, a .csv is made containing all dice scores for easy read over
-   
-Pretrained models can be found in the google drive. 
+Follow these steps to execute each module of the pipeline. You can copy–paste these commands directly into your terminal.
 
-#### **Reconstruction**
+---
 
-There are two steps to reconstruction. 
-1. Run the 2D masks (just masks) through 3D reconstruction to get the volumes at each time point individually with `3D-reconstruction.py`, 
-2. Then run that folder `Reconstructed-3D` through `4D-reconstruction.py`, which will combine all the time points so we have x1 4D volume over time for each subject, now saved in the folder Reconstructed-4D.
+### 1. Data Preprocessing  
+Prepare the base dataset of annotated MRI scans. 
 
-There is an additional version of the two scripts to check if the reconstruction worked on the pre-segmented data (original data), which we know is how the final version should ideally look here:
-- `/3D-reconstruction-original-data.py`
-- `/4D-reconstruction-original-data.py`
+```bash
+cd GI/pipeline-modules/data-preprocessing
+python prepare_dataset.py
+````
 
-Viewing in ITK-SNAP: 
-- After obtaining the 4D reconstructed volume, open it in ITK-snap and toggle the volume rendering as “ENABLED” to trigger the 3D volume. 
-- To see it over time, you will need to toggle 4D-replay from the overhead drop-down, otherwise, you will just see it in static. 
-When loading the file to ITK-snap, make sure you select “NIFTI” as the type. 
-- To add the overlap of either the original volume or the segmented volume, open the next file as an “additional image” and select “overlay”. 
-- You will need to select it from the sidebar and likely change its color map, as seen below. This way, you can easily compare the original and segmented volumes to see if it’s a faithful reconstruction over time.
+---
 
-#### **Motility**
+### 2. Generative Modelling
 
-- Roberta's original (manual pipeline) code is this file: `GUTBRAIN_MOTILITY.m`
-  - Follows these steps:
-  1. Load and Preprocess the Data: Reads a 4D stomach volume and smooths the data to reduce noise. Each time point is normalized for consistent analysis.
-  2. Align the Volume: For each time point, the stomach is aligned so that the principal axis (its longest orientation) is vertical. 
-  3. Crop the Antrum: Extracts the antrum (lower part of the stomach) from the aligned volume based on its bounding box
-  4. Show cropped 3D/4D antrum
+#### 2.1 SinGAN-Seg
 
-- Automated pipeline version is: `motility-final-calc.m`
+**Benchmarking**
 
+Acquire representative samples and statistics from the SinGAN model.
+
+```bash
+cd GI/pipeline-modules/generative-modelling/singan
+python train_singan_models_and_synthesize_images.py
+python acquire_singan_statistics.py
+```
+
+**Dataset Preparation**
+
+Generate augmented datasets of varying sizes for use in segmentation model training. 
+
+```bash
+python train_singan_models_and_synthesize_images.py
+python generate_singan_augmented_loo_datasets.py
+```
+
+#### 2.2 Diffuse-gen
+
+**Benchmarking**
+
+Acquire representative samples and statistics from the SinGAN model.
+
+```bash
+cd GI/pipeline-modules/generative-modelling/diffusion
+python train_diffusion_models_and_synthesize_images.py
+python acquire_diffusion_statistics.py
+```
+
+**Dataset Preparation**
+
+Generate augmented datasets of varying sizes for use in segmentation model training. 
+
+```bash
+python train_diffusion_models_and_synthesize_images.py
+python generate_diffusion_augmented_loo_datasets.py
+```
+
+---
+
+### 3. Segmentation Training & Evaluation
+
+Train the segmentation model on the generated augmented dataset and evaluate its performance with a leave-one-out scheme per subject.
+
+In this case, fine-tuning refers to providing additional subject data as the 
+
+#### 3.1 No Fine-tuning
+
+```bash
+cd GI/pipeline-modules/segmentation
+python train_eval_unets.py
+```
+
+> *Note: This uses the augmented dataset generated above.*
+
+#### 3.2 SinGAN Fine-tuning
+
+Fine-tuning refers to incorporating labeled image-mask pairs from the held-out subject used for validation. These labeled image-mask pairs
+
+1. Go to the finetuning folder:
+
+   ```bash
+   cd GI/pipeline-modules/generative-modelling/singan/finetuning
+   ```
+2. **No augmentation**
+
+   ```bash
+   # In generate_finetuning_datasets.py:
+   SELF_SUPERVISED = False
+   FINETUNING_AUGMENTATION = False
+   python generate_finetuning_datasets.py
+   python format_finetuning_datasets.py
+   ```
+3. **With augmentation**
+
+   ```bash
+   # In generate_finetuning_datasets.py:
+   SELF_SUPERVISED = False
+   FINETUNING_AUGMENTATION = True
+   python generate_finetuning_datasets.py
+   python format_finetuning_datasets.py
+   ```
+4. **Self-supervised**
+
+   ```bash
+   python synthesize_maskless_images.py
+   # Then in generate_finetuning_datasets.py:
+   SELF_SUPERVISED = True
+   # (optional) FINETUNING_AUGMENTATION = True
+   python generate_finetuning_datasets.py
+   python format_finetuning_datasets.py
+   ```
+5. Run segmentation again:
+
+   ```bash
+   cd GI/pipeline-modules/segmentation
+   python train_eval_unets.py
+   ```
+
+   > *Use `constants.py` to select the model ID.*
+
+---
+
+### 4. Motility Estimation & Analysis
+
+```bash
+cd GI/pipeline-modules/motility-estimation
+python extract_roberta_data.py
+python generate_comparative_motility_estimation_results.py
+```
+
+> *Edit the `models` array in `generate_comparative_motility_estimation_results.py` to point at your trained segmentation models.*
+
+Visualizations are available in `motility-comparison.ipynb`.
+
+```bash
+jupyter notebook motility-comparison.ipynb
+```
+
+## References
+- This work builds upon [A graphical user interface of ML Toolbox for Medical Images](https://github.com/sarperyn/gsoc-2024) implemented by Sarper Yurtseven in Google Summer of Code 2024 and previous work from the Neuroinformatics and Intelligent Systems Laboratory (NISys Lab) at the Department of Biomedical informatics, Emory University
+- The SinGAN-Seg code in this repository is from the paper [SinGAN-Seg: Synthetic training data generation for medical image segmentation
+](https://arxiv.org/abs/2107.00471), with slight modifications for compatibility with the pipeline.
+- The diffuse-gen paper in this code is from the paper [Using diffusion models to generate synthetic labeled data for medical image segmentation](https://link.springer.com/article/10.1007/s11548-024-03213-z), with slight modifications for compatibility with the pipeline.
