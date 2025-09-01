@@ -1,6 +1,6 @@
 # Leveraging Generative AI to Enhance Cine MRI Motility Estimation
 
-This GitHub repostiory has been developed under GSoC 2025.
+This GitHub repository has been developed under GSoC 2025.
 
 Contributor: Miguel Aenlle
 
