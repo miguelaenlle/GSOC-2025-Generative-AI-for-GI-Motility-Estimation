@@ -2,9 +2,13 @@
 *
 
 # Allow only specific file types
+!*.md
+!*.sh
+!*.py
 !*.ipynb
 !*.m
 !*.md
+!*.yaml
 
 # Allow directory structure so allowed files inside folders can be tracked
 !*/
