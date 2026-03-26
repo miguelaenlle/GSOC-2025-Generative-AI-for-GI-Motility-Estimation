@@ -87,7 +87,7 @@ python generate_singan_augmented_loo_datasets.py
 
 **Benchmarking**
 
-Acquire representative samples and statistics from the SinGAN model.
+Acquire representative samples and statistics from the diffuse-gen model.
 
 ```bash
 cd GI/pipeline-modules/generative-modelling/diffusion
