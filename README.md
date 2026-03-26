@@ -30,12 +30,12 @@ We utilized a private, clinical Cine MRI dataset of the gastrointestinal (GI) tr
 For each subject, 72 paired image and segmentation mask slices were captured across 132 temporal frames, yielding a total of 9,504 image–mask pairs. Manual annotations were available for only one temporal frame per subject; these single-frame labels served as the ground truth for both model training and evaluation.
 
 ## Getting started
-During our experimentation, we used a Ubuntu-based workstation with 2 NVIDIA 4090 GPUs.
+During our experimentation, we used an Ubuntu-based workstation with 2 NVIDIA 4090 GPUs.
 
 1. Clone the repository
 ```
-git clone https://github.com/yourusername/your-repo.git
-cd your-repo
+git clone https://github.com/miguelaenlle/GSOC-2025-Generative-AI-for-GI-Motility-Estimation.git
+cd GSOC-2025-Generative-AI-for-GI-Motility-Estimation
 ```
 
 2. Create and activate the conda 
